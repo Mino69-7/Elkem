@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── UTILISATEURS ────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  azureId       String?   @unique
+  email         String    @unique
+  displayName   String
+  passwordHash  String?
+  role          Role      @default(VIEWER)
+  avatar        String?
+  department    String?
+  jobTitle      String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  assignedDevices Device[]     @relation("AssignedUser")
+  auditLogs       AuditLog[]
+}
+
+enum Role {
+  MANAGER
+  TECHNICIAN
+  VIEWER
+}
+
+// ─── APPAREILS ───────────────────────────────────────────────
+
+model Device {
+  id              String          @id @default(cuid())
+
+  // Identifiants
+  assetTag        String          @unique
+  serialNumber    String          @unique
+  intuneDeviceId  String?         @unique
+  intuneUrl       String?
+
+  // Informations matérielles
+  type            DeviceType
+  brand           String
+  model           String
+  processor       String?
+  ram             String?
+  storage         String?
+  screenSize      String?
+  color           String?
+
+  // Clavier & région
+  keyboardLayout   KeyboardLayout  @default(AZERTY_FR)
+  keyboardLanguage String?
+
+  // Statut & localisation
+  status          DeviceStatus    @default(IN_STOCK)
+  condition       DeviceCondition @default(GOOD)
+  location        String?
+  site            String?
+
+  // Attribution utilisateur
+  assignedUserId  String?
+  assignedUser    User?           @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  assignedAt      DateTime?
+
+  // Cycle de vie
+  purchaseDate        DateTime?
+  warrantyExpiry      DateTime?
+  lastMaintenanceDate DateTime?
+  retiredAt           DateTime?
+
+  // Données financières
+  purchasePrice   Float?
+  supplier        String?
+  invoiceNumber   String?
+
+  // Données Intune
+  intuneLastSync  DateTime?
+  intuneOsVersion String?
+  intuneCompliant Boolean?
+  intuneLastSeen  DateTime?
+  intuneEnrolled  DateTime?
+  intuneOsName    String?
+
+  // Métadonnées
+  notes           String?         @db.Text
+  qrCode          String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  auditLogs       AuditLog[]
+  maintenanceLogs MaintenanceLog[]
+  attachments     Attachment[]
+}
+
+enum DeviceType {
+  LAPTOP
+  DESKTOP
+  SMARTPHONE
+  TABLET
+  MONITOR
+  KEYBOARD
+  MOUSE
+  HEADSET
+  DOCKING_STATION
+  PRINTER
+  OTHER
+}
+
+enum DeviceStatus {
+  ORDERED
+  IN_STOCK
+  ASSIGNED
+  IN_MAINTENANCE
+  LOANER
+  LOST
+  STOLEN
+  RETIRED
+}
+
+enum DeviceCondition {
+  NEW
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+}
+
+enum KeyboardLayout {
+  AZERTY_FR
+  QWERTY_US
+  QWERTY_UK
+  QWERTY_NO
+  QWERTY_NL
+  QWERTZ_DE
+  QWERTZ_CH
+  OTHER
+}
+
+// ─── AUDIT LOG ───────────────────────────────────────────────
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  deviceId    String
+  device      Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  action      AuditAction
+  fieldName   String?
+  oldValue    String?
+  newValue    String?
+  comment     String?
+  ipAddress   String?
+  createdAt   DateTime    @default(now())
+}
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  DELETED
+  INTUNE_SYNCED
+  MAINTENANCE_ADDED
+  ATTACHMENT_ADDED
+}
+
+// ─── MAINTENANCE ─────────────────────────────────────────────
+
+model MaintenanceLog {
+  id          String    @id @default(cuid())
+  deviceId    String
+  device      Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  type        String
+  description String    @db.Text
+  cost        Float?
+  provider    String?
+  startDate   DateTime
+  endDate     DateTime?
+  resolved    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}
+
+// ─── PIÈCES JOINTES ──────────────────────────────────────────
+
+model Attachment {
+  id          String    @id @default(cuid())
+  deviceId    String
+  device      Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  fileName    String
+  fileUrl     String
+  fileType    String
+  fileSize    Int?
+  createdAt   DateTime  @default(now())
+}
+
+// ─── ALERTES STOCK ───────────────────────────────────────────
+
+model StockAlert {
+  id          String      @id @default(cuid())
+  deviceType  DeviceType
+  threshold   Int         @default(3)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
