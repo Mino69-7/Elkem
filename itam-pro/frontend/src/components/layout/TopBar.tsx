@@ -1,11 +1,29 @@
-import { Bell, Search, Menu, LogOut } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Search, Menu, LogOut, X } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
+import { useDeviceStore } from '../../stores/deviceStore';
 import { useAuth } from '../../hooks/useAuth';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 
 export default function TopBar() {
   const { toggleSidebar, unreadCount } = useUIStore();
+  const { setFilters } = useDeviceStore();
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const [search, setSearch] = useState('');
+
+  const applySearch = (value: string) => {
+    const q = value.trim();
+    setFilters({ search: q || undefined, page: 1 });
+    if (q) navigate('/devices');
+  };
+
+  const clearSearch = () => {
+    setSearch('');
+    setFilters({ search: undefined, page: 1 });
+  };
 
   return (
     <header
@@ -22,21 +40,41 @@ export default function TopBar() {
         <Menu size={20} />
       </button>
 
-      {/* Recherche */}
+      {/* Recherche globale */}
       <div className="flex-1 max-w-md">
-        <div className="relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none"
-            aria-hidden="true"
-          />
-          <input
-            type="search"
-            placeholder="Rechercher un appareil, utilisateur..."
-            className="input-glass pl-9 py-2 text-sm w-full"
-            aria-label="Recherche globale"
-          />
-        </div>
+        <form
+          onSubmit={(e) => { e.preventDefault(); applySearch(search); }}
+          role="search"
+        >
+          <div className="relative">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') clearSearch();
+              }}
+              placeholder="Rechercher un appareil, utilisateur..."
+              className="input-glass pl-9 pr-8 py-2 text-sm w-full"
+              aria-label="Recherche globale"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                aria-label="Effacer la recherche"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </form>
       </div>
 
       <div className="flex-1" aria-hidden="true" />
@@ -48,7 +86,10 @@ export default function TopBar() {
       >
         <Bell size={20} />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center" aria-hidden="true">
+          <span
+            className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center"
+            aria-hidden="true"
+          >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -75,11 +116,12 @@ export default function TopBar() {
 
         <DropdownMenu.Portal>
           <DropdownMenu.Content
-            className="min-w-48 rounded-xl p-1.5 z-50 shadow-glass-dark"
+            className="min-w-48 rounded-xl p-1.5 z-50"
             style={{
               background: 'var(--bg-tertiary)',
               border: '1px solid var(--border-glass)',
               backdropFilter: 'blur(20px)',
+              boxShadow: 'var(--shadow-glass)',
             }}
             sideOffset={8}
             align="end"

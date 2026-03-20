@@ -11,5 +11,10 @@
       "Bash(docker info:*)",
       "Bash(cd /c/Users/C9NLFF4/Documents/Elkem/itam-pro/frontend && pnpm exec tsc --noEmit 2>&1)"
     ]
+  },
+  "enabledPlugins": {
+    "context7@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true
   }
 }

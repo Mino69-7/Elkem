@@ -1,20 +1,50 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileNav from './MobileNav';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useUIStore } from '../../stores/uiStore';
 
-/**
- * Coquille principale de l'application.
- * La protection auth est assurée par ProtectedRoute dans App.tsx.
- */
 export default function AppShell() {
+  const location = useLocation();
+  const { sidebarOpen, setSidebarOpen } = useUIStore();
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+
+      {/* ─── Sidebar desktop ────────────────────────────────── */}
       <Sidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
+      {/* ─── Sidebar mobile (drawer overlay) ────────────────── */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              className="lg:hidden fixed inset-0 z-30 bg-black/60"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setSidebarOpen(false)}
+              aria-hidden="true"
+            />
+            {/* Drawer */}
+            <motion.div
+              className="lg:hidden fixed left-0 top-0 bottom-0 z-40"
+              initial={{ x: -260 }}
+              animate={{ x: 0 }}
+              exit={{ x: -260 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 40 }}
+            >
+              <Sidebar mobile onClose={() => setSidebarOpen(false)} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Zone principale ─────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0">
         <TopBar />
 
         <main

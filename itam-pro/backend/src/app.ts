@@ -6,6 +6,8 @@ import dotenv from 'dotenv';
 import { logger } from './lib/logger.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import authRoutes from './routes/auth.routes.js';
+import deviceRoutes from './routes/device.routes.js';
+import userRoutes from './routes/user.routes.js';
 
 dotenv.config();
 
@@ -52,7 +54,9 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), mode: process.env.AUTH_MODE || 'local' });
 });
 
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth',    authLimiter, authRoutes);
+app.use('/api/devices', deviceRoutes);
+app.use('/api/users',   userRoutes);
 
 // ─── Gestion des erreurs ──────────────────────────────────────
 app.use(errorHandler);

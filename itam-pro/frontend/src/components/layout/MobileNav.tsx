@@ -10,9 +10,6 @@ const MOBILE_NAV_ITEMS = [
   { to: '/reports',   icon: BarChart3,       label: 'Rapports' },
 ];
 
-/**
- * Navigation bas de page pour mobile (<768px).
- */
 export default function MobileNav() {
   return (
     <nav
@@ -24,7 +21,7 @@ export default function MobileNav() {
       }}
       aria-label="Navigation mobile"
     >
-      <div className="flex items-center justify-around h-16 px-2 safe-area-inset-bottom">
+      <div className="flex items-center justify-around h-16 px-2">
         {MOBILE_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
@@ -32,10 +29,8 @@ export default function MobileNav() {
               key={item.to}
               to={item.to}
               className={({ isActive }) => clsx(
-                'flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-200',
-                isActive
-                  ? 'text-primary'
-                  : 'text-[var(--text-muted)]'
+                'relative flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-200',
+                isActive ? 'text-primary' : 'text-[var(--text-muted)]'
               )}
               aria-label={item.label}
             >
@@ -44,7 +39,10 @@ export default function MobileNav() {
                   <Icon size={20} />
                   <span className="text-[10px] font-medium">{item.label}</span>
                   {isActive && (
-                    <span className="absolute bottom-1 w-1 h-1 rounded-full bg-primary" aria-hidden="true" />
+                    <span
+                      className="absolute bottom-1 w-1 h-1 rounded-full bg-primary"
+                      aria-hidden="true"
+                    />
                   )}
                 </>
               )}
