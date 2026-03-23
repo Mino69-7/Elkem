@@ -10,7 +10,7 @@ import { useDevice, useUpdateDevice, useDeleteDevice, useAssignDevice, useUnassi
 import { useQuery } from '@tanstack/react-query';
 import { userService } from '../services/user.service';
 import { useAuthStore } from '../stores/authStore';
-import StatusBadge from '../components/ui/StatusBadge';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import DeviceForm from '../components/devices/DeviceForm';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';

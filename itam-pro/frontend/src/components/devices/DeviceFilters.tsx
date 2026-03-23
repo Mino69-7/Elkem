@@ -5,7 +5,10 @@ import { DEVICE_TYPE_LABELS, DEVICE_STATUS_LABELS } from '../../utils/formatters
 import type { DeviceType, DeviceStatus } from '../../types';
 
 const DEVICE_TYPES = Object.keys(DEVICE_TYPE_LABELS) as DeviceType[];
-const DEVICE_STATUSES = Object.keys(DEVICE_STATUS_LABELS) as DeviceStatus[];
+// IN_STOCK et ORDERED sont gérés dans la page Stock
+const DEVICE_STATUSES = (Object.keys(DEVICE_STATUS_LABELS) as DeviceStatus[]).filter(
+  (s) => s !== 'IN_STOCK' && s !== 'ORDERED'
+);
 
 interface DeviceFiltersProps {
   /** Valeur de recherche provenant de la TopBar (synchronisation) */

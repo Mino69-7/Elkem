@@ -1,40 +1,56 @@
-import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useEffect, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2 } from 'lucide-react';
-import type { Device } from '../../types';
+import { X, Loader2, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
+import { AppSelect } from '../ui/AppSelect';
+import { UserCombobox } from '../ui/UserCombobox';
+import type { Device, DeviceModel, DeviceType } from '../../types';
 import type { DeviceFormData } from '../../services/device.service';
+import { KEYBOARD_LAYOUT_LABELS, ELKEM_SITES, DEVICE_TYPE_LABELS } from '../../utils/formatters';
+import api from '../../services/api';
+
+// ─── Constantes ───────────────────────────────────────────────
+
+const KEYBOARD_FORM_OPTIONS = [
+  'AZERTY_FR','QWERTY_ES','QWERTY_IT','QWERTZ_DE',
+  'QWERTY_NO','QWERTY_UK','QWERTY_RU','QWERTY_TR','QWERTY_AR',
+] as const;
+
+const STATUS_OPTIONS = [
+  { value: 'ASSIGNED',       label: 'Actif' },
+  { value: 'IN_STOCK',       label: 'Stock' },
+  { value: 'RETIRED',        label: 'Rétention' },
+  { value: 'IN_MAINTENANCE', label: 'Maintenance' },
+  { value: 'LOST',           label: 'Perdu' },
+  { value: 'STOLEN',         label: 'Volé' },
+];
+
+const TYPE_OPTIONS = Object.entries(DEVICE_TYPE_LABELS).map(([value, label]) => ({ value, label }));
+const SITE_OPTIONS = ELKEM_SITES.map((s) => ({ value: s, label: s }));
+const KEYBOARD_OPTIONS = KEYBOARD_FORM_OPTIONS.map((k) => ({
+  value: k,
+  label: KEYBOARD_LAYOUT_LABELS[k] ?? k,
+}));
 
 // ─── Schéma Zod ───────────────────────────────────────────────
 
 const schema = z.object({
-  assetTag:        z.string().regex(/^[A-Z0-9-]+$/, 'Majuscules, chiffres et tirets uniquement'),
-  serialNumber:    z.string().min(1, 'Requis'),
-  type:            z.string().min(1, 'Requis'),
-  brand:           z.string().min(1, 'Requis'),
-  model:           z.string().min(1, 'Requis'),
-  keyboardLayout:  z.string().default('AZERTY_FR'),
-  status:          z.string().default('IN_STOCK'),
-  condition:       z.string().default('GOOD'),
-  processor:       z.string().optional(),
-  ram:             z.string().optional(),
-  storage:         z.string().optional(),
-  screenSize:      z.string().optional(),
-  color:           z.string().optional(),
-  location:        z.string().optional(),
-  site:            z.string().optional(),
-  purchaseDate:    z.string().optional(),
-  warrantyExpiry:  z.string().optional(),
-  purchasePrice:   z.preprocess(
-    (v) => (v === '' || v === undefined ? undefined : Number(v)),
-    z.number().positive().optional()
-  ),
-  supplier:        z.string().optional(),
-  invoiceNumber:   z.string().optional(),
-  notes:           z.string().optional(),
-  assignedUserId:  z.string().optional(),
+  assetTag:       z.string().min(1, 'Requis').regex(/^[A-Z0-9-]+$/, 'Majuscules, chiffres et tirets uniquement'),
+  serialNumber:   z.string().min(1, 'Requis'),
+  type:           z.string().min(1, 'Requis'),
+  modelId:        z.string().min(1, 'Requis'),
+  processor:      z.string().optional(),
+  ram:            z.string().optional(),
+  storage:        z.string().optional(),
+  screenSize:     z.string().optional(),
+  keyboardLayout: z.string().default('AZERTY_FR'),
+  status:         z.string().default('IN_STOCK'),
+  site:           z.string().default('Saint-Fons SUD'),
+  notes:          z.string().optional(),
+  assignedUserId: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -42,21 +58,17 @@ type FormValues = z.infer<typeof schema>;
 // ─── Props ────────────────────────────────────────────────────
 
 interface DeviceFormProps {
-  device?:    Device | null;
-  isOpen:     boolean;
-  isSaving:   boolean;
-  onClose:    () => void;
-  onSubmit:   (data: DeviceFormData) => void;
+  device?:  Device | null;
+  isOpen:   boolean;
+  isSaving: boolean;
+  onClose:  () => void;
+  onSubmit: (data: DeviceFormData) => void;
 }
 
 // ─── Champ de formulaire ──────────────────────────────────────
 
 function Field({ label, error, required, className, children }: {
-  label: string;
-  error?: string;
-  required?: boolean;
-  className?: string;
-  children: React.ReactNode;
+  label: string; error?: string; required?: boolean; className?: string; children: React.ReactNode;
 }) {
   return (
     <div className={`flex flex-col gap-1${className ? ` ${className}` : ''}`}>
@@ -74,193 +86,356 @@ function Field({ label, error, required, className, children }: {
 export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit }: DeviceFormProps) {
   const isEdit = !!device;
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const [syncState, setSyncState] = useState<'idle' | 'loading' | 'found' | 'notfound' | 'duplicate'>('idle');
+  const [syncMessage, setSyncMessage] = useState('');
+  const [assignedUserDisplay, setAssignedUserDisplay] = useState<string | undefined>(undefined);
+  const [pendingModelId, setPendingModelId] = useState<string | null>(null);
+
+  const { control, register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      keyboardLayout: 'AZERTY_FR',
-      status:         'IN_STOCK',
-      condition:      'GOOD',
-    },
+    defaultValues: { keyboardLayout: 'AZERTY_FR', status: 'IN_STOCK', site: 'Saint-Fons SUD' },
   });
 
-  // Pré-remplissage en mode édition
+  const selectedType   = watch('type');
+  const serialNumber   = watch('serialNumber');
+
+  // ── Chargement des modèles ────────────────────────────────
+  const { data: models = [] } = useQuery<DeviceModel[]>({
+    queryKey: ['device-models', selectedType],
+    queryFn:  async () => {
+      const url = selectedType ? `/devicemodels?type=${selectedType}` : '/devicemodels';
+      const { data } = await api.get<DeviceModel[]>(url);
+      return data;
+    },
+    enabled:  isOpen,
+  });
+
+  const modelOptions = models.map((m) => ({ value: m.id, label: m.name }));
+
+  // ── Applique le modèle après rechargement de la liste ────
+  useEffect(() => {
+    if (pendingModelId && models.some((m) => m.id === pendingModelId)) {
+      setValue('modelId', pendingModelId);
+      onModelChange(pendingModelId);
+      setPendingModelId(null);
+    }
+  }, [models, pendingModelId]);
+
+  // ── Pré-remplissage édition ───────────────────────────────
   useEffect(() => {
     if (device) {
       reset({
-        ...device,
-        purchaseDate:   device.purchaseDate   ? new Date(device.purchaseDate).toISOString().slice(0, 10)   : '',
-        warrantyExpiry: device.warrantyExpiry ? new Date(device.warrantyExpiry).toISOString().slice(0, 10) : '',
-        purchasePrice:  device.purchasePrice  ?? undefined,
+        assetTag:       device.assetTag,
+        serialNumber:   device.serialNumber,
+        type:           device.type,
+        modelId:        '',
+        processor:      device.processor ?? '',
+        ram:            device.ram ?? '',
+        storage:        device.storage ?? '',
+        screenSize:     device.screenSize ?? '',
+        keyboardLayout: device.keyboardLayout ?? 'AZERTY_FR',
+        status:         device.status ?? 'IN_STOCK',
+        site:           device.site ?? 'Saint-Fons SUD',
+        notes:          device.notes ?? '',
         assignedUserId: device.assignedUserId ?? '',
-      } as FormValues);
+      });
+      // Prépare l'affichage du combobox si un utilisateur est assigné
+      if (device.assignedUser) {
+        setAssignedUserDisplay(`${device.assignedUser.displayName} (${device.assignedUser.email})`);
+      } else {
+        setAssignedUserDisplay(undefined);
+      }
     } else {
-      reset({ keyboardLayout: 'AZERTY_FR', status: 'IN_STOCK', condition: 'GOOD' });
+      reset({ keyboardLayout: 'AZERTY_FR', status: 'IN_STOCK', site: 'Saint-Fons SUD' });
+      setAssignedUserDisplay(undefined);
     }
-  }, [device, reset]);
+    setSyncState('idle');
+  }, [device, isOpen, reset]);
+
+  // ── Auto-remplissage quand un modèle est sélectionné ─────
+  const onModelChange = (modelId: string) => {
+    const m = models.find((m) => m.id === modelId);
+    if (m) {
+      if (m.processor)  setValue('processor',  m.processor);
+      if (m.ram)        setValue('ram',        m.ram);
+      if (m.storage)    setValue('storage',    m.storage);
+      if (m.screenSize) setValue('screenSize', m.screenSize);
+    }
+  };
+
+  // ── Sync numéro de série ──────────────────────────────────
+  const handleSync = async () => {
+    if (!serialNumber?.trim()) return;
+    setSyncState('loading');
+    try {
+      const { data } = await api.get(`/lookup/serial/${encodeURIComponent(serialNumber.trim())}`);
+
+      if (data.found && data.source === 'local') {
+        setSyncState('duplicate');
+        setSyncMessage(data.warning ?? 'Numéro de série déjà enregistré');
+
+      } else if (data.found && data.source === 'intune') {
+        const d = data.data;
+        setSyncState('found');
+        setSyncMessage(`Intune : ${d.model ?? ''}`);
+
+      } else if (data.found && data.source === 'dell') {
+        const d = data.data;
+        // Auto-remplissage specs
+        if (d.processor) setValue('processor',  d.processor);
+        if (d.ram)       setValue('ram',        d.ram);
+        if (d.storage)   setValue('storage',    d.storage);
+        if (d.screenSize) setValue('screenSize', d.screenSize);
+
+        // Auto-sélection type + modèle du catalogue si trouvé
+        if (d.catalogModelId && d.catalogModelType) {
+          const currentType = watch('type');
+          if (currentType !== d.catalogModelType) {
+            setValue('type', d.catalogModelType);
+            setValue('modelId', '');
+          }
+          // Le modèle sera appliqué dès que la liste se recharge (via useEffect)
+          setPendingModelId(d.catalogModelId);
+        }
+
+        const filledSpecs = [d.processor, d.ram, d.storage].filter(Boolean).length;
+        setSyncState('found');
+        setSyncMessage(
+          filledSpecs > 0
+            ? `Dell : ${d.model} — config auto-remplie`
+            : `Dell : ${d.model} (modèle non trouvé dans le catalogue local)`
+        );
+
+      } else {
+        setSyncState('notfound');
+        setSyncMessage(data.hint ?? 'Non trouvé sur Dell ni dans Intune');
+      }
+    } catch {
+      setSyncState('notfound');
+      setSyncMessage('Erreur de vérification');
+    }
+  };
+
+  // ── Soumission ────────────────────────────────────────────
+  const handleFormSubmit = (values: FormValues) => {
+    const model = models.find((m) => m.id === values.modelId);
+    onSubmit({
+      assetTag:       values.assetTag,
+      serialNumber:   values.serialNumber,
+      type:           values.type,
+      brand:          model?.brand ?? 'Dell',
+      model:          model?.name ?? '',
+      processor:      values.processor,
+      ram:            values.ram,
+      storage:        values.storage,
+      screenSize:     values.screenSize,
+      keyboardLayout: values.keyboardLayout,
+      status:         values.status,
+      site:           values.site,
+      notes:          values.notes,
+      assignedUserId: values.assignedUserId || undefined,
+    } as DeviceFormData);
+  };
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             className="fixed inset-0 z-50 bg-black/60"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={onClose}
           />
 
-          {/* Panel */}
           <motion.div
-            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl flex flex-col shadow-2xl"
+            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg flex flex-col shadow-2xl"
             style={{ background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border-glass)' }}
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 400, damping: 40 }}
           >
             {/* En-tête */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
               <h2 className="font-semibold text-[var(--text-primary)]">
                 {isEdit ? `Modifier ${device?.assetTag}` : 'Nouvel appareil'}
               </h2>
-              <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors" aria-label="Fermer">
+              <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
                 <X size={16} />
               </button>
             </div>
 
             {/* Formulaire */}
-            <form onSubmit={handleSubmit(onSubmit as never)} className="flex-1 overflow-y-auto">
-              <div className="p-6 space-y-6">
+            <form onSubmit={handleSubmit(handleFormSubmit)} className="flex-1 overflow-y-auto">
+              <div className="p-5 space-y-5">
 
                 {/* ── Identification ── */}
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Identification</h3>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Identification</h3>
                   <div className="grid grid-cols-2 gap-3">
+
                     <Field label="Tag actif" error={errors.assetTag?.message} required>
-                      <input {...register('assetTag')} placeholder="ELKEM-LT-001" className="input-glass py-2 text-sm uppercase" />
+                      <input
+                        {...register('assetTag')}
+                        placeholder="IT-00001"
+                        className="input-glass py-2 text-sm uppercase"
+                      />
                     </Field>
+
+                    {/* N° de série + bouton Sync */}
                     <Field label="N° de série" error={errors.serialNumber?.message} required>
-                      <input {...register('serialNumber')} placeholder="SN-XXXXXXXXX" className="input-glass py-2 text-sm" />
+                      <input
+                        {...register('serialNumber')}
+                        placeholder="Ex : ABC1234"
+                        className="input-glass py-2 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSync}
+                        disabled={syncState === 'loading' || !serialNumber?.trim()}
+                        className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] hover:text-primary transition-colors disabled:opacity-40"
+                      >
+                        {syncState === 'loading'
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : <RefreshCw size={11} />
+                        }
+                        Sync
+                      </button>
+                      {syncState !== 'idle' && syncState !== 'loading' && (
+                        <p className={`text-[10px] flex items-center gap-1 ${
+                          syncState === 'duplicate' ? 'text-amber-400' :
+                          syncState === 'found'     ? 'text-emerald-400' : 'text-[var(--text-muted)]'
+                        }`}>
+                          {syncState === 'duplicate' && <AlertTriangle size={10} />}
+                          {syncState === 'found'     && <CheckCircle size={10} />}
+                          {syncMessage}
+                        </p>
+                      )}
+                    </Field>
+
+                    {/* Utilisateur assigné */}
+                    <Field label="Utilisateur assigné" className="col-span-2">
+                      <Controller
+                        control={control}
+                        name="assignedUserId"
+                        render={({ field }) => (
+                          <UserCombobox
+                            value={field.value ?? ''}
+                            displayValue={assignedUserDisplay}
+                            onChange={(userId, user) => {
+                              field.onChange(userId);
+                              if (user) {
+                                setAssignedUserDisplay(`${user.displayName} (${user.email})`);
+                              } else {
+                                setAssignedUserDisplay(undefined);
+                              }
+                            }}
+                          />
+                        )}
+                      />
                     </Field>
                   </div>
                 </section>
 
                 {/* ── Matériel ── */}
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Matériel</h3>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Matériel</h3>
                   <div className="grid grid-cols-2 gap-3">
+
                     <Field label="Type" error={errors.type?.message} required>
-                      <select {...register('type')} className="input-glass py-2 text-sm">
-                        <option value="">Sélectionner...</option>
-                        {[
-                          ['LAPTOP','Ordinateur portable'],['DESKTOP','Ordinateur fixe'],
-                          ['SMARTPHONE','Smartphone'],['TABLET','Tablette'],
-                          ['MONITOR','Écran'],['KEYBOARD','Clavier'],['MOUSE','Souris'],
-                          ['HEADSET','Casque'],['DOCKING_STATION','Station d\'accueil'],
-                          ['PRINTER','Imprimante'],['OTHER','Autre'],
-                        ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
+                      <Controller control={control} name="type" render={({ field }) => (
+                        <AppSelect
+                          value={field.value ?? ''}
+                          onChange={(v) => { field.onChange(v); setValue('modelId', ''); }}
+                          options={TYPE_OPTIONS}
+                          placeholder="Type…"
+                          error={!!errors.type}
+                        />
+                      )} />
                     </Field>
-                    <Field label="Marque" error={errors.brand?.message} required>
-                      <input {...register('brand')} placeholder="Dell, Apple, HP..." className="input-glass py-2 text-sm" />
+
+                    <Field label="Modèle" error={errors.modelId?.message} required>
+                      <Controller control={control} name="modelId" render={({ field }) => (
+                        <AppSelect
+                          value={field.value ?? ''}
+                          onChange={(v) => { field.onChange(v); onModelChange(v); }}
+                          options={modelOptions}
+                          placeholder={selectedType ? (modelOptions.length ? 'Modèle…' : 'Aucun modèle') : 'Choisir un type d\'abord'}
+                          disabled={!selectedType || modelOptions.length === 0}
+                          error={!!errors.modelId}
+                        />
+                      )} />
                     </Field>
-                    <Field label="Modèle" error={errors.model?.message} required className="col-span-2">
-                      <input {...register('model')} placeholder="Latitude 5540" className="input-glass py-2 text-sm" />
-                    </Field>
+
                     <Field label="Processeur">
-                      <input {...register('processor')} placeholder="Intel Core i7-1365U" className="input-glass py-2 text-sm" />
+                      <input {...register('processor')} placeholder="Auto-rempli via modèle" className="input-glass py-2 text-sm" />
                     </Field>
+
                     <Field label="RAM">
-                      <input {...register('ram')} placeholder="16 Go DDR5" className="input-glass py-2 text-sm" />
+                      <input {...register('ram')} placeholder="Auto-rempli via modèle" className="input-glass py-2 text-sm" />
                     </Field>
+
                     <Field label="Stockage">
-                      <input {...register('storage')} placeholder="512 Go SSD NVMe" className="input-glass py-2 text-sm" />
+                      <input {...register('storage')} placeholder="Auto-rempli via modèle" className="input-glass py-2 text-sm" />
                     </Field>
+
                     <Field label="Taille écran">
-                      <input {...register('screenSize')} placeholder='15.6"' className="input-glass py-2 text-sm" />
+                      <input {...register('screenSize')} placeholder='Auto-rempli via modèle' className="input-glass py-2 text-sm" />
                     </Field>
-                    <Field label="Couleur">
-                      <input {...register('color')} placeholder="Noir, Argent..." className="input-glass py-2 text-sm" />
-                    </Field>
-                    <Field label="Clavier">
-                      <select {...register('keyboardLayout')} className="input-glass py-2 text-sm">
-                        {[
-                          ['AZERTY_FR','AZERTY (FR)'],['QWERTY_US','QWERTY (US)'],
-                          ['QWERTY_UK','QWERTY (UK)'],['QWERTY_NO','QWERTY (NO)'],
-                          ['QWERTY_NL','QWERTY (NL)'],['QWERTZ_DE','QWERTZ (DE)'],
-                          ['QWERTZ_CH','QWERTZ (CH)'],['OTHER','Autre'],
-                        ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
+
+                    <Field label="Clavier" className="col-span-2">
+                      <Controller control={control} name="keyboardLayout" render={({ field }) => (
+                        <AppSelect
+                          value={field.value ?? 'AZERTY_FR'}
+                          onChange={field.onChange}
+                          options={KEYBOARD_OPTIONS}
+                        />
+                      )} />
                     </Field>
                   </div>
                 </section>
 
-                {/* ── Statut ── */}
+                {/* ── Statut & Localisation ── */}
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Statut</h3>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Statut & Localisation</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Statut">
-                      <select {...register('status')} className="input-glass py-2 text-sm">
-                        {[
-                          ['ORDERED','Commandé'],['IN_STOCK','En stock'],['ASSIGNED','Assigné'],
-                          ['IN_MAINTENANCE','En maintenance'],['LOANER','Prêt'],
-                          ['LOST','Perdu'],['STOLEN','Volé'],['RETIRED','Retraité'],
-                        ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="État">
-                      <select {...register('condition')} className="input-glass py-2 text-sm">
-                        {[
-                          ['NEW','Neuf'],['EXCELLENT','Excellent'],['GOOD','Bon'],
-                          ['FAIR','Passable'],['POOR','Mauvais'],
-                        ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Localisation">
-                      <input {...register('location')} placeholder="Bureau 3A, Salle serveur..." className="input-glass py-2 text-sm" />
-                    </Field>
-                    <Field label="Site">
-                      <input {...register('site')} placeholder="Paris, Lyon, Kristiansand..." className="input-glass py-2 text-sm" />
-                    </Field>
-                  </div>
-                </section>
 
-                {/* ── Cycle de vie ── */}
-                <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Cycle de vie</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Date d'achat">
-                      <input type="date" {...register('purchaseDate')} className="input-glass py-2 text-sm" />
+                    <Field label="Statut" error={errors.status?.message} required>
+                      <Controller control={control} name="status" render={({ field }) => (
+                        <AppSelect
+                          value={field.value ?? 'IN_STOCK'}
+                          onChange={field.onChange}
+                          options={STATUS_OPTIONS}
+                          error={!!errors.status}
+                        />
+                      )} />
                     </Field>
-                    <Field label="Fin de garantie">
-                      <input type="date" {...register('warrantyExpiry')} className="input-glass py-2 text-sm" />
-                    </Field>
-                    <Field label="Prix d'achat (€)" error={errors.purchasePrice?.message}>
-                      <input type="number" step="0.01" min="0" {...register('purchasePrice')} placeholder="1299.99" className="input-glass py-2 text-sm" />
-                    </Field>
-                    <Field label="Fournisseur">
-                      <input {...register('supplier')} placeholder="CDW, Dell Direct..." className="input-glass py-2 text-sm" />
-                    </Field>
-                    <Field label="N° de facture">
-                      <input {...register('invoiceNumber')} placeholder="FAC-2024-001" className="input-glass py-2 text-sm" />
+
+                    <Field label="Site" error={errors.site?.message} required>
+                      <Controller control={control} name="site" render={({ field }) => (
+                        <AppSelect
+                          value={field.value ?? 'Saint-Fons SUD'}
+                          onChange={field.onChange}
+                          options={SITE_OPTIONS}
+                          error={!!errors.site}
+                        />
+                      )} />
                     </Field>
                   </div>
                 </section>
 
                 {/* ── Notes ── */}
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Notes</h3>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Notes</h3>
                   <textarea
                     {...register('notes')}
                     rows={3}
-                    placeholder="Informations complémentaires..."
+                    placeholder="Informations complémentaires…"
                     className="input-glass w-full py-2 text-sm resize-none"
                   />
                 </section>
               </div>
 
               {/* Pied */}
-              <div className="flex gap-3 px-6 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
+              <div className="flex gap-3 px-5 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
                 <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">
                   Annuler
                 </button>

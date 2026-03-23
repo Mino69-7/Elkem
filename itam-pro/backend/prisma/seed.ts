@@ -1,4 +1,5 @@
 import { PrismaClient, Role, DeviceType, DeviceStatus, DeviceCondition, KeyboardLayout, AuditAction } from '@prisma/client';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -267,6 +268,28 @@ async function main() {
   });
 
   console.log('✅ Alertes stock créées');
+
+  // Créer les modèles Dell par défaut
+  const dellModels = [
+    { name: 'Latitude 5450', type: DeviceType.LAPTOP, processor: 'Intel Core Ultra 5 125U', ram: '32 Go DDR5', storage: '512 Go SSD NVMe', screenSize: '14"', order: 1 },
+    { name: 'Latitude 5440', type: DeviceType.LAPTOP, processor: 'Intel Core Ultra 5 125U', ram: '32 Go DDR5', storage: '512 Go SSD NVMe', screenSize: '14"', order: 2 },
+    { name: 'Latitude 5430', type: DeviceType.LAPTOP, processor: 'Intel Core i7-1265U',    ram: '16 Go DDR4', storage: '512 Go SSD NVMe', screenSize: '14"', order: 3 },
+    { name: 'Latitude 5420', type: DeviceType.LAPTOP, processor: 'Intel Core i7-1165G7',   ram: '16 Go DDR4', storage: '512 Go SSD NVMe', screenSize: '14"', order: 4 },
+    { name: 'Latitude 5410', type: DeviceType.LAPTOP, processor: 'Intel Core i7-10610U',   ram: '16 Go DDR4', storage: '256 Go SSD NVMe', screenSize: '14"', order: 5 },
+    { name: 'Latitude 5400', type: DeviceType.LAPTOP, processor: 'Intel Core i7-8665U',    ram: '16 Go DDR4', storage: '256 Go SSD NVMe', screenSize: '14"', order: 6 },
+    { name: 'Précision 3490', type: DeviceType.LAPTOP, processor: 'Intel Core Ultra 7 165H', ram: '32 Go DDR5', storage: '512 Go SSD NVMe', screenSize: '14"', order: 7 },
+    { name: 'Pro 14',          type: DeviceType.LAPTOP, processor: 'Intel Core Ultra 5 125U', ram: '32 Go DDR5', storage: '512 Go SSD NVMe', screenSize: '14"', order: 8 },
+  ];
+
+  for (const m of dellModels) {
+    await prisma.deviceModel.upsert({
+      where: { name_type: { name: m.name, type: m.type } },
+      update: { processor: m.processor, ram: m.ram, storage: m.storage, screenSize: m.screenSize, order: m.order },
+      create: { ...m, brand: 'Dell' },
+    });
+  }
+
+  console.log('✅ Modèles Dell créés');
 
   // Créer des audit logs de base
   const lt001 = await prisma.device.findUnique({ where: { assetTag: 'ELKEM-LT-001' } });

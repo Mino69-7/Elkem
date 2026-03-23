@@ -137,10 +137,15 @@ enum KeyboardLayout {
   AZERTY_FR
   QWERTY_US
   QWERTY_UK
+  QWERTY_ES
+  QWERTY_IT
   QWERTY_NO
   QWERTY_NL
   QWERTZ_DE
   QWERTZ_CH
+  QWERTY_RU
+  QWERTY_TR
+  QWERTY_AR
   OTHER
 }
 
@@ -200,6 +205,26 @@ model Attachment {
   fileType    String
   fileSize    Int?
   createdAt   DateTime  @default(now())
+}
+
+// ─── MODÈLES D'APPAREILS ─────────────────────────────────────
+
+model DeviceModel {
+  id          String     @id @default(cuid())
+  name        String
+  type        DeviceType
+  brand       String     @default("Dell")
+  processor   String?
+  ram         String?
+  storage     String?
+  screenSize  String?
+  notes       String?
+  isActive    Boolean    @default(true)
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([name, type])
 }
 
 // ─── ALERTES STOCK ───────────────────────────────────────────

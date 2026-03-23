@@ -6,7 +6,7 @@ import {
   Pencil, Trash2, UserRound,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import StatusBadge from '../ui/StatusBadge';
+import { StatusBadge } from '../ui/StatusBadge';
 import { Skeleton } from '../ui/Skeleton';
 import type { Device, DeviceType } from '../../types';
 import { DEVICE_TYPE_LABELS, formatDate } from '../../utils/formatters';

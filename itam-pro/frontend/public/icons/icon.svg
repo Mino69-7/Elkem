@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- Laptop body -->
+  <rect x="104" y="168" width="304" height="180" rx="20" fill="none" stroke="white" stroke-width="20"/>
+  <!-- Screen -->
+  <rect x="136" y="200" width="240" height="116" rx="8" fill="white" opacity="0.25"/>
+  <!-- Screen lines -->
+  <rect x="156" y="220" width="160" height="10" rx="5" fill="white" opacity="0.6"/>
+  <rect x="156" y="244" width="120" height="10" rx="5" fill="white" opacity="0.6"/>
+  <rect x="156" y="268" width="140" height="10" rx="5" fill="white" opacity="0.6"/>
+  <!-- Base -->
+  <path d="M72 360 H440 L408 392 H104 Z" fill="white" opacity="0.9"/>
+  <!-- Check badge -->
+  <circle cx="390" cy="148" r="64" fill="#10b981"/>
+  <path d="M362 148 L382 168 L418 132" stroke="white" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

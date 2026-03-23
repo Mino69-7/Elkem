@@ -59,7 +59,7 @@ export default function Devices() {
         <div>
           <h1 className="text-xl font-bold text-[var(--text-primary)]">Appareils</h1>
           <p className="text-sm text-[var(--text-muted)] mt-0.5">
-            {isLoading ? '…' : `${total} appareil${total > 1 ? 's' : ''}`}
+            {isLoading ? '…' : `${total} appareil${total > 1 ? 's' : ''} en service`}
           </p>
         </div>
 

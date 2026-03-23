@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#g)"/>
+  <!-- Laptop body -->
+  <rect x="7" y="10" width="18" height="11" rx="1.5" fill="none" stroke="white" stroke-width="1.5"/>
+  <!-- Screen -->
+  <rect x="9" y="12" width="14" height="7" rx="0.5" fill="white" opacity="0.3"/>
+  <!-- Base -->
+  <path d="M5 22 H27 L25 24 H7 Z" fill="white" opacity="0.9"/>
+  <!-- Dot accent -->
+  <circle cx="24" cy="9" r="4" fill="#10b981"/>
+  <path d="M22.5 9 L23.5 10 L25.5 8" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

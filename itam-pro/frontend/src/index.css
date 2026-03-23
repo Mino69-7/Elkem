@@ -149,6 +149,26 @@ body {
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
   }
 
+  /* Fix select natif — fond et texte forcés pour tous les thèmes */
+  select.input-glass {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    cursor: pointer;
+  }
+  select.input-glass option {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+  [data-theme="dark"] select.input-glass {
+    background-color: #18181f !important;
+  }
+  [data-theme="dark"] select.input-glass option {
+    background-color: #18181f;
+    color: #f1f5f9;
+  }
+
   /* Gradient animé pour le fond de la page login */
   .animated-gradient {
     background: linear-gradient(-45deg, #0a0a0f, #1a0533, #0a1a3d, #001a1a, #0a0a0f);

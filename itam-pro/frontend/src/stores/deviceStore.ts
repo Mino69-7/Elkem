@@ -18,6 +18,7 @@ const defaultFilters: DeviceFilters = {
   limit: 25,
   sortBy: 'updatedAt',
   sortOrder: 'desc',
+  excludeStock: true,   // Appareils = tout sauf IN_STOCK/ORDERED (gérés dans Stock)
 };
 
 export const useDeviceStore = create<DeviceStore>()((set) => ({

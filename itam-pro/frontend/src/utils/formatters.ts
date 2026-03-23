@@ -29,14 +29,14 @@ export function formatPrice(price: number | null | undefined): string {
 
 /** Labels affichage des statuts */
 export const DEVICE_STATUS_LABELS: Record<string, string> = {
-  ORDERED: 'Commandé',
-  IN_STOCK: 'En stock',
-  ASSIGNED: 'Attribué',
-  IN_MAINTENANCE: 'En maintenance',
-  LOANER: 'Prêt',
-  LOST: 'Perdu',
-  STOLEN: 'Volé',
-  RETIRED: 'Réformé',
+  ORDERED:        'Commandé',
+  IN_STOCK:       'Stock',
+  ASSIGNED:       'Actif',
+  IN_MAINTENANCE: 'Maintenance',
+  LOANER:         'Prêt',
+  LOST:           'Perdu',
+  STOLEN:         'Volé',
+  RETIRED:        'Rétention',
 };
 
 /** Labels types d'appareils */
@@ -65,15 +65,37 @@ export const DEVICE_CONDITION_LABELS: Record<string, string> = {
 
 /** Labels layouts clavier */
 export const KEYBOARD_LAYOUT_LABELS: Record<string, string> = {
-  AZERTY_FR: 'AZERTY (FR)',
-  QWERTY_US: 'QWERTY (US)',
-  QWERTY_UK: 'QWERTY (UK)',
-  QWERTY_NO: 'QWERTY (NO)',
-  QWERTY_NL: 'QWERTY (NL)',
-  QWERTZ_DE: 'QWERTZ (DE)',
-  QWERTZ_CH: 'QWERTZ (CH)',
+  AZERTY_FR: 'FR (Azerty)',
+  QWERTY_ES: 'ES (Espagnol)',
+  QWERTY_IT: 'IT (Italien)',
+  QWERTZ_DE: 'DE (Allemand)',
+  QWERTY_NO: 'NO (Norvégien)',
+  QWERTY_UK: 'UK (Anglais)',
+  QWERTY_RU: 'RU (Russe)',
+  QWERTY_TR: 'TU (Turc)',
+  QWERTY_AR: 'AR (Arabe)',
+  QWERTY_US: 'US (Américain)',
+  QWERTY_NL: 'NL (Néerlandais)',
+  QWERTZ_CH: 'CH (Suisse)',
   OTHER: 'Autre',
 };
+
+/** Sites Elkem */
+export const ELKEM_SITES = [
+  'Saint-Fons SUD',
+  'Saint-Fons NORD',
+  'ATRiON',
+  'ROUSSILLON',
+  'SALAISE',
+  'ITALIE',
+  'ESPAGNE',
+  'ALLEMAGNE',
+  'TURQUIE',
+  'RUSSIE',
+  'SLOVENIE',
+] as const;
+
+export type ElkemSite = typeof ELKEM_SITES[number];
 
 /** Labels rôles */
 export const ROLE_LABELS: Record<string, string> = {

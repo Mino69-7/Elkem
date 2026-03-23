@@ -120,6 +120,22 @@ export interface Attachment {
   createdAt: string;
 }
 
+export interface DeviceModel {
+  id:         string;
+  name:       string;
+  type:       DeviceType;
+  brand:      string;
+  processor?: string;
+  ram?:       string;
+  storage?:   string;
+  screenSize?: string;
+  notes?:     string;
+  isActive:   boolean;
+  order:      number;
+  createdAt:  string;
+  updatedAt:  string;
+}
+
 export interface StockAlert {
   id: string;
   deviceType: DeviceType;
@@ -153,6 +169,7 @@ export interface DeviceFilters {
   status?: DeviceStatus;
   location?: string;
   assigned?: boolean;
+  excludeStock?: boolean;
   page?: number;
   limit?: number;
   sortBy?: string;

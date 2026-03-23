@@ -38,7 +38,7 @@ const updateSchema = deviceSchema.partial();
 export async function listDevices(req: Request, res: Response, next: NextFunction) {
   try {
     const {
-      search, type, status, assigned,
+      search, type, status, assigned, excludeStock,
       page = '1', limit = '25',
       sortBy = 'updatedAt', sortOrder = 'desc',
     } = req.query as Record<string, string>;
@@ -63,6 +63,7 @@ export async function listDevices(req: Request, res: Response, next: NextFunctio
     }
     if (type)             where.type   = type;
     if (status)           where.status = status;
+    else if (excludeStock === 'true') where.status = { notIn: ['IN_STOCK', 'ORDERED'] };
     if (assigned === 'true')  where.assignedUserId = { not: null };
     if (assigned === 'false') where.assignedUserId = null;
 

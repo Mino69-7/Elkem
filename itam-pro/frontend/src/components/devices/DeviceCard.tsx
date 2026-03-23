@@ -4,7 +4,7 @@ import {
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Pencil, Trash2, UserRound,
 } from 'lucide-react';
-import StatusBadge from '../ui/StatusBadge';
+import { StatusBadge } from '../ui/StatusBadge';
 import { DEVICE_TYPE_LABELS } from '../../utils/formatters';
 import type { Device, DeviceType } from '../../types';
 

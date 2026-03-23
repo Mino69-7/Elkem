@@ -8,6 +8,13 @@ import { errorHandler } from './middleware/error.middleware.js';
 import authRoutes from './routes/auth.routes.js';
 import deviceRoutes from './routes/device.routes.js';
 import userRoutes from './routes/user.routes.js';
+import statsRoutes from './routes/stats.routes.js';
+import intuneRoutes from './routes/intune.routes.js';
+import stockAlertRoutes from './routes/stockAlert.routes.js';
+import reportsRoutes from './routes/reports.routes.js';
+import deviceModelRoutes from './routes/deviceModel.routes.js';
+import lookupRoutes from './routes/lookup.routes.js';
+import { startStockAlertJob } from './jobs/stockAlert.job.js';
 
 dotenv.config();
 
@@ -57,6 +64,12 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth',    authLimiter, authRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/users',   userRoutes);
+app.use('/api/stats',   statsRoutes);
+app.use('/api/intune',       intuneRoutes);
+app.use('/api/stockalerts',   stockAlertRoutes);
+app.use('/api/reports',       reportsRoutes);
+app.use('/api/devicemodels',  deviceModelRoutes);
+app.use('/api/lookup',        lookupRoutes);
 
 // ─── Gestion des erreurs ──────────────────────────────────────
 app.use(errorHandler);
@@ -65,6 +78,7 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   logger.info(`🚀 Backend ITAM Pro démarré sur http://localhost:${PORT}`);
   logger.info(`📋 Mode authentification : ${process.env.AUTH_MODE || 'local'}`);
+  startStockAlertJob();
 });
 
 export default app;
