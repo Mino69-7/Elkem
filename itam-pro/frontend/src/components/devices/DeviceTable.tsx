@@ -1,11 +1,13 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, ChevronUp, ChevronDown,
-  Pencil, Trash2, UserRound,
+  Pencil, Trash2, UserRound, AlertTriangle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Skeleton } from '../ui/Skeleton';
 import type { Device, DeviceType } from '../../types';
@@ -61,6 +63,17 @@ function SortHeader({ field, label }: { field: string; label: string }) {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: DeviceTableProps) {
+  // Calcul des doublons : même assignedUserId sur ≥2 appareils actifs
+  const doublonUserIds = useMemo(() => {
+    const counts = new Map<string, number>();
+    devices.forEach(d => {
+      if (d.assignedUserId && ['ASSIGNED', 'PENDING_RETURN', 'LOANER'].includes(d.status)) {
+        counts.set(d.assignedUserId, (counts.get(d.assignedUserId) ?? 0) + 1);
+      }
+    });
+    return new Set([...counts.entries()].filter(([, c]) => c >= 2).map(([uid]) => uid));
+  }, [devices]);
+
   if (isLoading) {
     return (
       <div className="overflow-x-auto">
@@ -156,6 +169,28 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                       <span className="text-[var(--text-secondary)] text-xs truncate max-w-[120px]">
                         {device.assignedUser.displayName}
                       </span>
+                      {device.assignedUserId && doublonUserIds.has(device.assignedUserId) && ['ASSIGNED', 'PENDING_RETURN', 'LOANER'].includes(device.status) && (
+                        <Tooltip.Provider delayDuration={200}>
+                          <Tooltip.Root>
+                            <Tooltip.Trigger asChild>
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 text-[9px] font-semibold cursor-default">
+                                <AlertTriangle size={9} />
+                                Doublon
+                              </span>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                              <Tooltip.Content
+                                side="top"
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white z-50"
+                                style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+                              >
+                                Doublon détecté : cet utilisateur a plusieurs appareils actifs
+                                <Tooltip.Arrow className="fill-black/85" />
+                              </Tooltip.Content>
+                            </Tooltip.Portal>
+                          </Tooltip.Root>
+                        </Tooltip.Provider>
+                      )}
                     </span>
                   ) : (
                     <span className="flex items-center gap-1.5 text-[var(--text-muted)] text-xs">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileDown, Laptop, ClipboardList, Filter, Loader2 } from 'lucide-react';
 import { GlassCard } from '../components/ui/GlassCard';
+import { AppSelect } from '../components/ui/AppSelect';
 import { useAuthStore } from '../stores/authStore';
 import { DEVICE_TYPE_LABELS, DEVICE_STATUS_LABELS } from '../utils/formatters';
 import type { DeviceType, DeviceStatus } from '../types';
@@ -156,35 +157,33 @@ export default function Reports() {
             <span className="font-medium">Filtres optionnels</span>
           </div>
           <div className="grid grid-cols-1 gap-2">
-            <select
+            <AppSelect
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as DeviceType | '')}
-              className="input-glass py-1.5 text-xs"
-            >
-              <option value="">Tous les types</option>
-              {(Object.keys(DEVICE_TYPE_LABELS) as DeviceType[]).map((t) => (
-                <option key={t} value={t}>{DEVICE_TYPE_LABELS[t]}</option>
-              ))}
-            </select>
-            <select
+              onChange={(v) => setTypeFilter(v as DeviceType | '')}
+              placeholder="Tous les types"
+              options={(Object.keys(DEVICE_TYPE_LABELS) as DeviceType[]).map((t) => ({
+                value: t,
+                label: DEVICE_TYPE_LABELS[t],
+              }))}
+            />
+            <AppSelect
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as DeviceStatus | '')}
-              className="input-glass py-1.5 text-xs"
-            >
-              <option value="">Tous les statuts</option>
-              {(Object.keys(DEVICE_STATUS_LABELS) as DeviceStatus[]).map((s) => (
-                <option key={s} value={s}>{DEVICE_STATUS_LABELS[s]}</option>
-              ))}
-            </select>
-            <select
+              onChange={(v) => setStatusFilter(v as DeviceStatus | '')}
+              placeholder="Tous les statuts"
+              options={(Object.keys(DEVICE_STATUS_LABELS) as DeviceStatus[]).map((s) => ({
+                value: s,
+                label: DEVICE_STATUS_LABELS[s],
+              }))}
+            />
+            <AppSelect
               value={assignedFilter}
-              onChange={(e) => setAssignedFilter(e.target.value as '' | 'true' | 'false')}
-              className="input-glass py-1.5 text-xs"
-            >
-              <option value="">Tous (assignés + libres)</option>
-              <option value="true">Assignés uniquement</option>
-              <option value="false">Libres uniquement</option>
-            </select>
+              onChange={(v) => setAssignedFilter(v as '' | 'true' | 'false')}
+              placeholder="Tous (assignés + libres)"
+              options={[
+                { value: 'true',  label: 'Assignés uniquement' },
+                { value: 'false', label: 'Libres uniquement'   },
+              ]}
+            />
           </div>
         </ExportCard>
 

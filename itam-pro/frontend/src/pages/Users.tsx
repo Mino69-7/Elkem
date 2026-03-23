@@ -5,6 +5,7 @@ import { Search, Laptop, Shield, Eye } from 'lucide-react';
 import { userService } from '../services/user.service';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
+import { AppSelect } from '../components/ui/AppSelect';
 import { ROLE_LABELS } from '../utils/formatters';
 import type { Role } from '../types';
 
@@ -55,16 +56,16 @@ export default function Users() {
             className="input-glass pl-9 py-2 text-sm w-full"
           />
         </div>
-        <select
+        <AppSelect
           value={role}
-          onChange={(e) => setRole(e.target.value as Role | '')}
-          className="input-glass py-2 text-sm"
-        >
-          <option value="">Tous les rôles</option>
-          <option value="MANAGER">Manager</option>
-          <option value="TECHNICIAN">Technicien</option>
-          <option value="VIEWER">Lecteur</option>
-        </select>
+          onChange={(v) => setRole(v as Role | '')}
+          placeholder="Tous les rôles"
+          options={[
+            { value: 'MANAGER',    label: 'Manager'    },
+            { value: 'TECHNICIAN', label: 'Technicien' },
+            { value: 'VIEWER',     label: 'Lecteur'    },
+          ]}
+        />
       </div>
 
       {/* ─── Grille utilisateurs ─────────────────────────────── */}

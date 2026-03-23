@@ -57,11 +57,11 @@ export function AppSelect({
           sideOffset={4}
           className={clsx(
             'z-[200] w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl shadow-2xl',
-            'border border-[rgba(255,255,255,0.12)]',
+            'border border-[var(--border-glass)]',
             'animate-in fade-in-0 zoom-in-95'
           )}
           style={{
-            background: '#1a1a2e',
+            background: 'var(--bg-secondary)',
             maxHeight: '280px',
           }}
         >
@@ -72,9 +72,9 @@ export function AppSelect({
                 value={opt.value}
                 className={clsx(
                   'relative flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer outline-none select-none',
-                  'text-slate-200',
-                  'data-[highlighted]:bg-indigo-600/40 data-[highlighted]:text-white',
-                  'data-[state=checked]:text-indigo-300',
+                  'text-[var(--text-primary)]',
+                  'data-[highlighted]:bg-indigo-600/20 data-[highlighted]:text-[var(--text-primary)]',
+                  'data-[state=checked]:text-indigo-400',
                   'transition-colors'
                 )}
               >

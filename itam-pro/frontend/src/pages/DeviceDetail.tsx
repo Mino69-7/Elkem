@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { userService } from '../services/user.service';
 import { useAuthStore } from '../stores/authStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { AppSelect } from '../components/ui/AppSelect';
 import DeviceForm from '../components/devices/DeviceForm';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -355,16 +356,13 @@ export default function DeviceDetail() {
           >
             <div className="glass-card p-6 max-w-sm w-full space-y-4 pointer-events-auto">
               <h3 className="font-semibold text-[var(--text-primary)]">Assigner à un utilisateur</h3>
-              <select
+              <AppSelect
                 value={selectedUser}
-                onChange={(e) => setSelectedUser(e.target.value)}
-                className="input-glass w-full py-2 text-sm"
-              >
-                <option value="">Sélectionner un utilisateur...</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.displayName} — {u.email}</option>
-                ))}
-              </select>
+                onChange={setSelectedUser}
+                placeholder="Sélectionner un utilisateur…"
+                className="w-full"
+                options={users.map((u) => ({ value: u.id, label: `${u.displayName} — ${u.email}` }))}
+              />
               <div className="flex gap-3">
                 <button onClick={() => setAssignOpen(false)} className="btn-secondary flex-1 py-2 text-sm">
                   Annuler

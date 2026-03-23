@@ -8,8 +8,10 @@ export type DeviceType =
   | 'DOCKING_STATION' | 'PRINTER' | 'OTHER';
 
 export type DeviceStatus =
-  | 'ORDERED' | 'IN_STOCK' | 'ASSIGNED'
+  | 'ORDERED' | 'IN_STOCK' | 'ASSIGNED' | 'PENDING_RETURN'
   | 'IN_MAINTENANCE' | 'LOANER' | 'LOST' | 'STOLEN' | 'RETIRED';
+
+export type POStatus = 'PENDING' | 'PARTIAL' | 'COMPLETE' | 'CANCELLED';
 
 export type DeviceCondition = 'NEW' | 'EXCELLENT' | 'GOOD' | 'FAIR' | 'POOR';
 
@@ -76,6 +78,8 @@ export interface Device {
   intuneOsName?: string;
   notes?: string;
   qrCode?: string;
+  purchaseOrderId?: string;
+  purchaseOrder?: PurchaseOrder;
   createdAt: string;
   updatedAt: string;
   auditLogs?: AuditLog[];
@@ -143,6 +147,23 @@ export interface StockAlert {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  reference: string;
+  deviceModelId: string;
+  deviceModel: DeviceModel;
+  quantity: number;
+  receivedCount: number;
+  status: POStatus;
+  expectedAt?: string;
+  notes?: string;
+  createdById: string;
+  createdBy: { id: string; displayName: string };
+  createdAt: string;
+  updatedAt: string;
+  devices?: Device[];
 }
 
 // ─── API response types ───────────────────────────────────────

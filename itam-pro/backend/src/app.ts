@@ -14,6 +14,7 @@ import stockAlertRoutes from './routes/stockAlert.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
 import deviceModelRoutes from './routes/deviceModel.routes.js';
 import lookupRoutes from './routes/lookup.routes.js';
+import purchaseOrderRoutes from './routes/purchaseOrder.routes.js';
 import { startStockAlertJob } from './jobs/stockAlert.job.js';
 
 dotenv.config();
@@ -70,6 +71,7 @@ app.use('/api/stockalerts',   stockAlertRoutes);
 app.use('/api/reports',       reportsRoutes);
 app.use('/api/devicemodels',  deviceModelRoutes);
 app.use('/api/lookup',        lookupRoutes);
+app.use('/api/orders',        purchaseOrderRoutes);
 
 // ─── Gestion des erreurs ──────────────────────────────────────
 app.use(errorHandler);

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Laptop, Package, Users, RefreshCw,
   BarChart3, Settings, LogOut, ChevronLeft, ChevronRight,
-  Moon, Sun, X
+  Moon, Sun, X, ShoppingCart
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/devices',   icon: Laptop,          label: 'Appareils' },
   { to: '/stock',     icon: Package,         label: 'Stock' },
+  { to: '/orders',    icon: ShoppingCart,    label: 'Commandes' },
   { to: '/users',     icon: Users,           label: 'Utilisateurs' },
   { to: '/intune',    icon: RefreshCw,       label: 'Sync Intune' },
   { to: '/reports',   icon: BarChart3,       label: 'Rapports' },

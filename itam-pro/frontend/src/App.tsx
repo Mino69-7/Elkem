@@ -16,6 +16,7 @@ const Users = lazy(() => import('./pages/Users'));
 const IntuneSync = lazy(() => import('./pages/IntuneSync'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Orders = lazy(() => import('./pages/Orders'));
 
 function PageLoader() {
   return (
@@ -68,6 +69,7 @@ export default function App() {
             <Route path="devices" element={<Devices />} />
             <Route path="devices/:id" element={<DeviceDetailPage />} />
             <Route path="stock" element={<Stock />} />
+            <Route path="orders" element={<Orders />} />
             <Route path="users" element={<Users />} />
             <Route path="intune" element={<IntuneSync />} />
             <Route path="reports" element={<Reports />} />

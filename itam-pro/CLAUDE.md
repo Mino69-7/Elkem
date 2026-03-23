@@ -53,11 +53,13 @@ frontend/src/
 │   ├── layout/       AppShell, Sidebar, TopBar, MobileNav
 │   ├── devices/      DeviceTable, DeviceCard, DeviceFilters, DeviceForm
 │   └── ui/           GlassCard (export NOMMÉ), Button, Input, StatusBadge, Skeleton
-│                     AppSelect (Radix UI custom dropdown, fond #1a1a2e)
+│                     AppSelect (Radix UI custom dropdown — JAMAIS de <select> natif)
 │                     UserCombobox (search-as-you-type, appel /api/users?search=)
-├── pages/            Dashboard, Devices, DeviceDetail, Stock, Users, IntuneSync, Reports, Settings
-├── hooks/            useAuth, useDevices
-├── services/         api (axios), auth.service, device.service, user.service
+├── pages/            Dashboard, Devices, DeviceDetail, Stock, Orders (NOUVEAU),
+│                     Users, IntuneSync, Reports, Settings
+├── hooks/            useAuth, useDevices, usePurchaseOrders (NOUVEAU)
+├── services/         api (axios), auth.service, device.service, user.service,
+│                     purchaseOrder.service (NOUVEAU)
 ├── stores/           authStore, uiStore (Zustand persist), deviceStore
 ├── types/            index.ts — miroir du schéma Prisma
 └── utils/            formatters.ts, validators.ts
@@ -67,8 +69,10 @@ frontend/src/
 
 ```
 backend/src/
-├── controllers/   auth, device, user, stats, intune, stockAlert, reports, deviceModel, lookup
-├── routes/        auth, device, user, stats, intune, stockAlert, reports, deviceModel, lookup
+├── controllers/   auth, device, user, stats, intune, stockAlert, reports,
+│                  deviceModel, lookup, purchaseOrder (NOUVEAU)
+├── routes/        auth, device, user, stats, intune, stockAlert, reports,
+│                  deviceModel, lookup, purchaseOrder (NOUVEAU)
 ├── middleware/    auth.middleware (authenticate, requireRole), error.middleware
 ├── services/      intune.service (Microsoft Graph Client)
 ├── jobs/          stockAlert.job (node-cron, toutes les heures)
@@ -80,9 +84,12 @@ backend/src/
 ## Conventions importantes
 
 ### Frontend
+- **JAMAIS de `<select>` natif** — les selects natifs affichent fond blanc OS sur Windows. Toujours utiliser :
+  - **AppSelect** : export nommé → `import { AppSelect } from '../components/ui/AppSelect'` — pour tous les dropdowns de formulaire
+  - **FilterPill** (dans DeviceFilters) : basé sur Radix UI Select — pour les filtres pill-style
 - **GlassCard** : export nommé → `import { GlassCard } from '../components/ui/GlassCard'`
 - **Skeleton** : export nommé → `import { Skeleton } from '../components/ui/Skeleton'`
-- **AppSelect** : export nommé → `import { AppSelect } from '../components/ui/AppSelect'` — à utiliser pour TOUS les dropdowns de formulaire (pas de `<select>` natif dans les formulaires)
+- **StatusBadge** : export nommé → `import { StatusBadge } from '../components/ui/StatusBadge'`
 - **UserCombobox** : export nommé → `import { UserCombobox } from '../components/ui/UserCombobox'` — recherche utilisateurs avec debounce 300ms, sélection obligatoire depuis la liste
 - **Icône DOCKING_STATION** : utiliser `Layers` (lucide-react n'a pas `Dock`)
 - Le frontend proxie `/api` → `http://localhost:3001` via Vite (`vite.config.ts`)
@@ -90,6 +97,7 @@ backend/src/
 - Design system : classes `.glass-card`, `.btn-primary`, `.btn-secondary`, `.input-glass` définies dans `index.css`
 - Variables CSS : `--text-primary`, `--text-secondary`, `--text-muted`, `--bg-primary`, `--bg-secondary`, `--border-glass`
 - Dark/light mode : attribut `data-theme` sur `<html>`, géré par `uiStore`
+- **AppSelect dropdown** : `background: 'var(--bg-secondary)'` + `color: 'var(--text-primary)'` — compatible light ET dark mode
 
 ### Backend
 - `req.currentUser` est typé dans `auth.middleware.ts` (id, email, displayName, role)
@@ -97,28 +105,62 @@ backend/src/
 - Audit automatique à écrire dans chaque controller (pas de middleware séparé)
 - Permissions par rôle : VIEWER = lecture, TECHNICIAN = CRUD, MANAGER = tout
 - Paramètre `excludeStock=true` sur `GET /api/devices` → exclut IN_STOCK et ORDERED (utilisé par la page Appareils)
+- **Zéro suppression** — aucun device ne peut être supprimé de la DB, uniquement changement de statut
 
 ### Prisma
 - Générer le client : `npx prisma generate` (depuis `backend/`)
 - Studio : `npx prisma studio` ou `pnpm db:studio` depuis la racine
 - Seed : `pnpm db:seed` depuis la racine ou `npx tsx prisma/seed.ts` depuis `backend/`
 - **Le seed utilise `update:` pour mettre à jour les specs** — toujours rejouer après modification des modèles Dell
+- **Migration active** : `20260323212250_add_purchase_orders_pending_return`
 
 ---
 
 ## Architecture logique des pages (décision validée)
 
-| Page | Contenu | Statuts concernés |
+| Page | Contenu | Statuts / Données |
 |---|---|---|
-| **Stock** | Inventaire entrepôt, par modèle avec compteurs, réception livraisons | IN_STOCK, ORDERED |
-| **Appareils** | Registre du parc déployé, master registry, audit trail | ASSIGNED, IN_MAINTENANCE, LOANER, LOST, STOLEN, RETIRED |
-| **Paramètres** | Config système, catalogue modèles (MANAGER), seuils stock | — |
+| **Stock** › Inventaire | Pool de matériel disponible par modèle | IN_STOCK, ORDERED |
+| **Stock** › Déchets | Appareils retirés du parc | RETIRED (badge ⚠ Récent si via PO < 180j) |
+| **Appareils** | Master registry du parc déployé | ASSIGNED, PENDING_RETURN, IN_MAINTENANCE, LOANER, LOST, STOLEN, RETIRED |
+| **Commandes** › Commandes | Bons de commande (PO) — suivi réception | PurchaseOrder (PENDING/PARTIAL/COMPLETE/CANCELLED) |
+| **Commandes** › Catalogue | CRUD modèles DeviceModel (MANAGER) | — |
+| **Commandes** › Règles alerte | Seuils stock par modèle (MANAGER) | StockAlert |
+| **Paramètres** | Config système, thème | — |
 
-**Règle fondamentale** : aucun appareil n'est jamais supprimé, uniquement son statut change. Zéro suppression = zéro perte.
+**Règles fondamentales :**
+1. Aucun appareil n'est jamais supprimé — uniquement changement de statut. Zéro suppression = zéro perte.
+2. Un device lié à un PO a son `brand/model/type` **verrouillés** (immutables en édition).
+3. Un doublon = utilisateur avec ≥ 2 appareils en `{ASSIGNED, PENDING_RETURN, LOANER}` simultanément.
 
 ---
 
-## Catalogue modèles Dell (seed)
+## Logique PurchaseOrder (Bon de Commande) — session 2026-03-24
+
+### Principe anti-fraude
+- Le **MANAGER** crée une commande : modèle choisi + quantité (ex: 40 Dell Pro 14)
+- Le **TECHNICIEN** réceptionne les appareils un par un via `/orders/:id/receive` — saisit uniquement SN + assetTag
+- Le modèle est **verrouillé** sur celui de la commande — impossible à modifier
+- Un compteur `receivedCount / quantity` visible en temps réel — si jamais 0 → appareil manquant traçable
+- Si un technicien met un appareil récent en RETIRED → badge ⚠ rouge dans l'onglet Déchets
+- Rien n'est supprimable → tout va en RETIRED dans le pire des cas
+
+### Flux statut PurchaseOrder
+```
+PENDING → PARTIAL (premier appareil reçu) → COMPLETE (tous reçus)
+        → CANCELLED (annulation manager, jamais supprimé)
+```
+
+### Flux statut Device — passation
+```
+ASSIGNED (nouveau PC) + ASSIGNED (ancien PC) → doublon détecté
+Technicien marque ancien PC → PENDING_RETURN
+Récupération physique → IN_STOCK ou RETIRED
+```
+
+---
+
+## Catalogue Dell (specs validées par l'utilisateur)
 
 Tous type LAPTOP, brand Dell, screenSize 14" :
 
@@ -137,16 +179,22 @@ Tous type LAPTOP, brand Dell, screenSize 14" :
 
 ## Routes API backend
 
-| Méthode | Route | Description |
-|---|---|---|
-| GET | `/api/devices?excludeStock=true` | Liste appareils hors stock (page Appareils) |
-| GET | `/api/devices?status=IN_STOCK` | Appareils en stock (page Stock) |
-| GET | `/api/devicemodels/stock-summary` | Inventaire par modèle avec compteurs IN_STOCK/ORDERED |
-| GET | `/api/lookup/serial/:sn` | Lookup SN : local → Intune → Dell (public + TechDirect) |
-| GET | `/api/users?search=xxx` | Recherche utilisateurs (UserCombobox) |
-| GET | `/api/stats` | KPIs dashboard |
-| GET | `/api/reports/devices` | Export CSV appareils |
-| GET | `/api/reports/audit` | Export CSV audit |
+| Méthode | Route | Rôle requis | Description |
+|---|---|---|---|
+| GET | `/api/devices?excludeStock=true` | AUTH | Liste appareils hors stock (page Appareils) |
+| GET | `/api/devices?status=IN_STOCK` | AUTH | Appareils en stock (page Stock) |
+| PATCH | `/api/devices/:id` | TECHNICIAN | Mise à jour — modèle verrouillé si purchaseOrderId |
+| GET | `/api/devicemodels/stock-summary` | AUTH | Inventaire par modèle avec compteurs IN_STOCK/ORDERED |
+| GET | `/api/lookup/serial/:sn` | AUTH | Lookup SN : local → Intune → Dell |
+| GET | `/api/users?search=xxx` | AUTH | Recherche utilisateurs (UserCombobox) |
+| GET | `/api/stats` | AUTH | KPIs dashboard |
+| GET | `/api/reports/devices` | AUTH | Export CSV appareils |
+| GET | `/api/reports/audit` | AUTH | Export CSV audit |
+| GET | `/api/orders` | AUTH | Liste bons de commande actifs |
+| POST | `/api/orders` | MANAGER | Créer un bon de commande |
+| PUT | `/api/orders/:id` | MANAGER | Modifier un bon de commande |
+| DELETE | `/api/orders/:id` | MANAGER | Annuler un bon de commande (status → CANCELLED) |
+| POST | `/api/orders/:orderId/receive` | TECHNICIAN | Réceptionner un appareil (crée Device lié au PO) |
 
 ---
 
@@ -160,7 +208,7 @@ Tous type LAPTOP, brand Dell, screenSize 14" :
 - **Type** → charge la liste de modèles filtrée
 - **Modèle** → auto-remplit les specs via `onModelChange()`
 - **Utilisateur assigné** : UserCombobox obligatoire par clic (pas de saisie libre)
-- **Statut** : Actif / Stock / Rétention / Maintenance / Perdu / Volé
+- **Statut** : Actif / Stock / À récupérer / Maintenance / Perdu / Volé
 - **Site** : 11 sites Elkem (Saint-Fons SUD par défaut)
 - **Clavier** : 9 layouts (AZERTY_FR par défaut)
 
@@ -187,18 +235,26 @@ DeviceTable, DeviceCard, DeviceFilters, DeviceForm (drawer), DeviceDetail (4 ong
 - IntuneSync : statut connexion, sync manuelle, liste devices avec compliance
 - IntuneService : Microsoft Graph Client (GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET)
 
-### ✅ Phase 6 — Finitions (en cours)
+### ✅ Phase 6 — Finitions (avancée — session 2026-03-24)
 - ✅ Cron alertes stock (node-cron, toutes les heures)
 - ✅ Export CSV/Excel (UTF-8 BOM, devices + audit)
-- ✅ Page Paramètres : catalogue modèles + seuils stock (MANAGER)
+- ✅ Page Paramètres : thème dark/light
 - ✅ Catalogue modèles DeviceModel avec auto-remplissage dans DeviceForm
-- ✅ AppSelect (Radix UI) pour tous les dropdowns de formulaire
+- ✅ AppSelect (Radix UI) pour TOUS les dropdowns — fond var(--bg-secondary), jamais <select> natif
 - ✅ UserCombobox : recherche utilisateurs temps réel, sélection obligatoire
 - ✅ Bouton Sync N° de série : Dell public API (cascade 3 endpoints) + TechDirect si DELL_API_KEY
-- ✅ Refonte page Stock : inventaire par modèle, compteurs, barre dispo, bouton Réceptionner
+- ✅ Page Stock refonte : inventaire par modèle, compteurs, barre dispo + onglet Déchets (RETIRED)
 - ✅ Séparation logique Stock vs Appareils (excludeStock=true par défaut dans Appareils)
+- ✅ Page Appareils — filtres pills compactes (Radix UI, une seule ligne, non-intrusif)
+- ✅ Fix complet selects natifs → AppSelect (DeviceDetail, Reports, Users, DeviceFilters)
+- ✅ Statut PENDING_RETURN ("À récupérer") ajouté — migration appliquée
+- ✅ Modèle PurchaseOrder (Bon de Commande) — migration appliquée
+- ✅ Page Commandes (/orders) : onglet Commandes (PO + réception) + Catalogue + Règles d'alerte
+- ✅ Détection doublons dans DeviceTable (badge orange si user ≥ 2 devices actifs)
+- ✅ Sidebar : entrée "Commandes" avec icône ShoppingCart
 - ⏳ PWA polish (service worker, manifest, icônes)
 - ⏳ Azure App Registration + SSO Intune (en attente droits admin)
+- ⏳ Page Dashboard — à faire en dernier (dépend des autres pages)
 
 ---
 
@@ -207,6 +263,7 @@ DeviceTable, DeviceCard, DeviceFilters, DeviceForm (drawer), DeviceDetail (4 ong
 - Port backend : 3001 (configurable via `PORT` dans `backend/.env`)
 - `AUTH_MODE=local` → pas besoin d'Azure AD pour tester
 - `AUTH_MODE=sso` → nécessite app registration Azure AD (tenant ID, client ID, client secret)
-- `DELL_API_KEY` dans `backend/.env` → active Dell TechDirect API (prioritaire sur les endpoints publics). Clé obtenue via Dell TechDirect (tdm.dell.com, compte business requis). Sans clé, 3 endpoints publics Dell en cascade sont utilisés en fallback.
-- Migration active : `20260323111921_add_device_models_keyboard_layouts`
+- `DELL_API_KEY` dans `backend/.env` → active Dell TechDirect API (prioritaire sur les endpoints publics)
+- Migration active : `20260323212250_add_purchase_orders_pending_return`
 - KeyboardLayout enum étendu : QWERTY_ES, QWERTY_IT, QWERTY_RU, QWERTY_TR, QWERTY_AR ajoutés
+- Après migration Prisma, redémarrer le backend pour recharger le binaire `.dll.node` Prisma
