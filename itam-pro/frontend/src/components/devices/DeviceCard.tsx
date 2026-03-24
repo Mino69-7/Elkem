@@ -66,6 +66,7 @@ export default function DeviceCard({ device, index, onEdit, onDelete }: DeviceCa
       <div className="min-w-0">
         <Link
           to={`/devices/${device.id}`}
+          state={{ from: '/devices' }}
           className="block font-semibold text-[var(--text-primary)] text-sm hover:text-primary transition-colors truncate"
         >
           {device.brand} {device.model}

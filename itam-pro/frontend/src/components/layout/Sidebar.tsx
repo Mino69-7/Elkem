@@ -35,6 +35,12 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const collapsed = mobile ? false : sidebarCollapsed;
   const sidebarWidth = collapsed ? 64 : 240;
 
+  // Quand on navigue vers /devices/:id depuis une autre section (ex: Stock),
+  // on utilise location.state.from pour garder le contexte actif correct dans la sidebar
+  const fromState = (location.state as { from?: string } | null)?.from;
+  const isDeviceDetail = /^\/devices\/[a-zA-Z0-9-]+$/.test(location.pathname);
+  const effectivePath = isDeviceDetail && fromState ? fromState : location.pathname;
+
   const handleNavClick = () => {
     if (mobile) onClose?.();
   };
@@ -136,7 +142,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
         {/* ─── Navigation ──────────────────────────────────── */}
         <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto" aria-label="Menu principal">
           {NAV_ITEMS.map((item) => {
-            const isActive = location.pathname.startsWith(item.to);
+            const isActive = effectivePath.startsWith(item.to);
             const Icon = item.icon;
 
             if (collapsed) {

@@ -164,7 +164,6 @@ export default function DeviceDetail() {
             { value: 'info',        label: 'Informations' },
             { value: 'maintenance', label: `Maintenance (${device.maintenanceLogs?.length ?? 0})` },
             { value: 'audit',       label: `Historique (${device.auditLogs?.length ?? 0})` },
-            { value: 'files',       label: `Fichiers (${device.attachments?.length ?? 0})` },
           ].map((tab) => (
             <Tabs.Trigger
               key={tab.value}
@@ -229,6 +228,7 @@ export default function DeviceDetail() {
               <InfoRow label="Garantie"     value={formatDate(device.warrantyExpiry)} />
               <InfoRow label="Prix d'achat" value={formatPrice(device.purchasePrice)} />
               <InfoRow label="Fournisseur"  value={device.supplier} />
+              <InfoRow label="N° commande"  value={device.purchaseOrder?.reference} />
               <InfoRow label="N° facture"   value={device.invoiceNumber} />
               <InfoRow label="Créé le"      value={formatDate(device.createdAt)} />
               <InfoRow label="Modifié le"   value={formatDate(device.updatedAt)} />
@@ -322,15 +322,6 @@ export default function DeviceDetail() {
           </GlassCard>
         </Tabs.Content>
 
-        {/* ── Fichiers ── */}
-        <Tabs.Content value="files" className="mt-4">
-          <GlassCard padding="none">
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-[var(--text-muted)]">
-              <AlertTriangle size={36} className="opacity-30" />
-              <p className="text-sm">Gestion des pièces jointes — Phase 6</p>
-            </div>
-          </GlassCard>
-        </Tabs.Content>
       </Tabs.Root>
 
       {/* ─── Formulaire d'édition ────────────────────────────── */}

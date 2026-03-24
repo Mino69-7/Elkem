@@ -257,6 +257,7 @@ export default function Dashboard() {
                             {' '}
                             <Link
                               to={`/devices/${log.device.id}`}
+                              state={{ from: '/dashboard' }}
                               className="font-mono text-[10px] text-primary hover:underline"
                             >
                               {log.device.assetTag}
@@ -301,6 +302,7 @@ export default function Dashboard() {
                       <Link
                         key={d.id}
                         to={`/devices/${d.id}`}
+                        state={{ from: '/dashboard' }}
                         className="flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.02] transition-colors gap-3"
                       >
                         <div className="min-w-0">
@@ -337,6 +339,7 @@ export default function Dashboard() {
                     <Link
                       key={d.id}
                       to={`/devices/${d.id}`}
+                      state={{ from: '/dashboard' }}
                       className="flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.02] transition-colors gap-3"
                     >
                       <div className="min-w-0">

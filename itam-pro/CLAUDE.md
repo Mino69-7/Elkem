@@ -259,7 +259,7 @@ AppShell, Sidebar (mobile drawer), TopBar (recherche câblée), MobileNav.
 
 ### ✅ Phase 4 — CRUD Appareils
 CRUD complet devices + users, audit auto, permissions par rôle.
-DeviceTable, DeviceCard, DeviceFilters, DeviceForm (drawer), DeviceDetail (4 onglets).
+DeviceTable, DeviceCard, DeviceFilters, DeviceForm (drawer), DeviceDetail (3 onglets : Informations, Maintenance, Historique).
 
 ### ✅ Phase 5 — Dashboard + Intune
 - Dashboard bento grid : KPIs, BarChart types, DonutChart statuts, activité récente, garanties, derniers appareils
@@ -286,6 +286,22 @@ DeviceTable, DeviceCard, DeviceFilters, DeviceForm (drawer), DeviceDetail (4 ong
 - ✅ Détection doublons dans DeviceTable (badge orange si user ≥ 2 devices actifs)
 - ✅ Renommage pages : "Appareils" → "Utilisateurs" (BookUser), "Utilisateurs" → "Admin" (ShieldCheck)
 - ✅ Navigation contextuelle : DeviceDetail retourne à la page d'origine (Stock, Commandes, Utilisateurs)
+
+### ✅ Phase 7 — Cohérence navigation & architecture (session 2026-03-24)
+- ✅ **Sidebar contexte** : active item correct selon l'origine — `location.state.from` lu dans `Sidebar.tsx` via `effectivePath`. Depuis Stock → "Stock" actif. Depuis Dashboard → "Dashboard" actif. Depuis Utilisateurs → "Utilisateurs" actif.
+- ✅ **Onglet Fichiers supprimé** de DeviceDetail — plus affiché nulle part. Reste : Informations · Maintenance · Historique.
+- ✅ **N° commande visible dans DeviceDetail** — champ `N° commande` (= `device.purchaseOrder?.reference`, ex: `CMD-2026-001`) ajouté dans la section "Cycle de vie". Séparation claire : Tag IT (assetTag individuel) dans le tableau, N° commande dans la fiche.
+- ✅ **State explicite sur tous les `<Link>` vers DeviceDetail** :
+  - `DeviceTable.tsx` : `state={{ from: '/devices' }}`
+  - `DeviceCard.tsx` : `state={{ from: '/devices' }}`
+  - `Dashboard.tsx` (×3 liens) : `state={{ from: '/dashboard' }}`
+  - `Stock.tsx` (déjà en place) : `state={{ from: '/stock' }}`
+
+**Règle de navigation validée :**
+> Tout `<Link>` ou `navigate()` vers `/devices/:id` DOIT passer un `state={{ from: '<route_origine>' }}`.
+> DeviceDetail lit `location.state?.from ?? '/devices'` pour le bouton retour.
+> La Sidebar lit ce même `from` pour l'item actif quand on est sur `/devices/:id`.
+
 - ⏳ PWA polish (service worker, manifest, icônes)
 - ⏳ Azure App Registration + SSO Intune (en attente droits admin)
 - ⏳ Page Dashboard — révision finale (dépend des autres pages)

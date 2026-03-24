@@ -132,6 +132,7 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                 <td className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">
                   <Link
                     to={`/devices/${device.id}`}
+                    state={{ from: '/devices' }}
                     className="hover:text-primary transition-colors font-medium"
                   >
                     {device.assetTag}
@@ -140,7 +141,7 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
 
                 {/* Appareil */}
                 <td className="px-4 py-3">
-                  <Link to={`/devices/${device.id}`} className="hover:text-primary transition-colors">
+                  <Link to={`/devices/${device.id}`} state={{ from: '/devices' }} className="hover:text-primary transition-colors">
                     <p className="font-medium text-[var(--text-primary)]">{device.brand} {device.model}</p>
                     <p className="text-xs text-[var(--text-muted)]">{device.serialNumber}</p>
                   </Link>
