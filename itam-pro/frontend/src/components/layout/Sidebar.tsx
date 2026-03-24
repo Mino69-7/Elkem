@@ -1,9 +1,9 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Laptop, Package, Users, RefreshCw,
+  LayoutDashboard, Laptop, Package, RefreshCw,
   BarChart3, Settings, LogOut, ChevronLeft, ChevronRight,
-  Moon, Sun, X, ShoppingCart
+  Moon, Sun, X, ShoppingCart, BookUser, ShieldCheck
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -12,10 +12,10 @@ import { clsx } from 'clsx';
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/devices',   icon: Laptop,          label: 'Appareils' },
+  { to: '/devices',   icon: BookUser,        label: 'Utilisateurs' },
   { to: '/stock',     icon: Package,         label: 'Stock' },
   { to: '/orders',    icon: ShoppingCart,    label: 'Commandes' },
-  { to: '/users',     icon: Users,           label: 'Utilisateurs' },
+  { to: '/users',     icon: ShieldCheck,     label: 'Admin' },
   { to: '/intune',    icon: RefreshCw,       label: 'Sync Intune' },
   { to: '/reports',   icon: BarChart3,       label: 'Rapports' },
 ];

@@ -5,6 +5,10 @@ export function usePurchaseOrders() {
   return useQuery({ queryKey: ['orders'], queryFn: purchaseOrderService.list });
 }
 
+export function useOrderHistory() {
+  return useQuery({ queryKey: ['orders-history'], queryFn: purchaseOrderService.history, staleTime: 30_000 });
+}
+
 export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({

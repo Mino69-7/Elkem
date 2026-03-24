@@ -10,12 +10,25 @@ const poSchema = z.object({
   notes:         z.string().optional(),
 });
 
-// Liste tous les POs avec le modèle associé
+const PO_INCLUDE = { deviceModel: true, createdBy: { select: { id: true, displayName: true } } };
+
+// Liste les POs actifs (hors CANCELLED et COMPLETE)
 export async function listOrders(req: Request, res: Response, next: NextFunction) {
   try {
     const orders = await prisma.purchaseOrder.findMany({
-      where: { status: { not: 'CANCELLED' } },
-      include: { deviceModel: true, createdBy: { select: { id: true, displayName: true } } },
+      where: { status: { notIn: ['CANCELLED', 'COMPLETE'] } },
+      include: PO_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(orders);
+  } catch (err) { next(err); }
+}
+
+// Historique complet — toutes les commandes, tous statuts
+export async function listHistory(req: Request, res: Response, next: NextFunction) {
+  try {
+    const orders = await prisma.purchaseOrder.findMany({
+      include: PO_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     res.json(orders);
@@ -33,7 +46,7 @@ export async function createOrder(req: Request, res: Response, next: NextFunctio
         expectedAt: parsed.data.expectedAt ? new Date(parsed.data.expectedAt) : undefined,
         createdById: (req as any).currentUser.id,
       },
-      include: { deviceModel: true, createdBy: { select: { id: true, displayName: true } } },
+      include: PO_INCLUDE,
     });
     res.status(201).json(order);
   } catch (err) { next(err); }
@@ -50,7 +63,7 @@ export async function updateOrder(req: Request, res: Response, next: NextFunctio
         ...parsed.data,
         expectedAt: parsed.data.expectedAt ? new Date(parsed.data.expectedAt) : undefined,
       },
-      include: { deviceModel: true, createdBy: { select: { id: true, displayName: true } } },
+      include: PO_INCLUDE,
     });
     res.json(order);
   } catch (err) { next(err); }
@@ -62,31 +75,19 @@ export async function cancelOrder(req: Request, res: Response, next: NextFunctio
     const order = await prisma.purchaseOrder.update({
       where: { id: req.params.id },
       data: { status: 'CANCELLED' },
-      include: { deviceModel: true, createdBy: { select: { id: true, displayName: true } } },
+      include: PO_INCLUDE,
     });
     res.json(order);
   } catch (err) { next(err); }
 }
 
-// Lister les POs annulés (MANAGER uniquement)
-export async function listCancelledOrders(req: Request, res: Response, next: NextFunction) {
-  try {
-    const orders = await prisma.purchaseOrder.findMany({
-      where: { status: 'CANCELLED' },
-      include: { deviceModel: true, createdBy: { select: { id: true, displayName: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(orders);
-  } catch (err) { next(err); }
-}
-
 // Réceptionner un appareil (TECHNICIAN+) — crée le Device lié au PO
+// Tag IT = référence commande (identique pour tout le lot) ; unicité assurée par serialNumber
 export async function receiveDevice(req: Request, res: Response, next: NextFunction) {
   try {
     const { orderId } = req.params;
-    const { serialNumber, assetTag, notes } = z.object({
+    const { serialNumber, notes } = z.object({
       serialNumber: z.string().min(1),
-      assetTag:     z.string().regex(/^[A-Z0-9-]+$/),
       notes:        z.string().optional(),
     }).parse(req.body);
 
@@ -98,11 +99,14 @@ export async function receiveDevice(req: Request, res: Response, next: NextFunct
     if (order.status === 'CANCELLED') return res.status(400).json({ message: 'Commande annulée' });
     if (order.receivedCount >= order.quantity) return res.status(400).json({ message: 'Commande déjà complète' });
 
-    // Vérifier unicité SN et assetTag
+    // Vérifier unicité SN
     const snExists = await prisma.device.findUnique({ where: { serialNumber } });
     if (snExists) return res.status(400).json({ message: 'Numéro de série déjà existant' });
-    const tagExists = await prisma.device.findUnique({ where: { assetTag } });
-    if (tagExists) return res.status(400).json({ message: 'Tag IT déjà existant' });
+
+    // Tag IT = référence de la commande (commun à tous les appareils du même lot)
+    // La traçabilité individuelle est assurée par le serialNumber et purchaseOrderId
+    const newReceived = order.receivedCount + 1;
+    const assetTag = order.reference;
 
     const dm = order.deviceModel;
 
@@ -131,12 +135,11 @@ export async function receiveDevice(req: Request, res: Response, next: NextFunct
         deviceId: device.id,
         userId:   (req as any).currentUser.id,
         action:   'CREATED',
-        comment:  `Réceptionné via commande ${order.reference}`,
+        comment:  `Réceptionné via commande ${order.reference} — Tag ${assetTag}`,
       },
     });
 
     // Incrémenter receivedCount et mettre à jour le statut du PO
-    const newReceived = order.receivedCount + 1;
     const newStatus = newReceived >= order.quantity ? 'COMPLETE' : 'PARTIAL';
     await prisma.purchaseOrder.update({
       where: { id: orderId },

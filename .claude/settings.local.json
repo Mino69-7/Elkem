@@ -12,7 +12,9 @@
       "Bash(cd /c/Users/C9NLFF4/Documents/Elkem/itam-pro/frontend && pnpm exec tsc --noEmit 2>&1)",
       "Bash(ls:*)",
       "Bash(node -e \":*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(node:*)",
+      "Bash(npx tsc:*)"
     ]
   },
   "enabledPlugins": {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import { motion } from 'framer-motion';
 import {
@@ -37,6 +37,8 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
 export default function DeviceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const backTo = (location.state as any)?.from ?? '/devices';
   const { user: currentUser } = useAuthStore();
   const canEdit = currentUser?.role === 'MANAGER' || currentUser?.role === 'TECHNICIAN';
   const isManager = currentUser?.role === 'MANAGER';
@@ -66,7 +68,7 @@ export default function DeviceDetail() {
 
   const handleDelete = async () => {
     await deleteMut.mutateAsync(id!);
-    navigate('/devices');
+    navigate(backTo);
   };
 
   const handleAssign = async () => {
@@ -99,7 +101,7 @@ export default function DeviceDetail() {
       <div className="p-6 flex flex-col items-center gap-4 pt-16">
         <AlertTriangle size={40} className="text-red-400" />
         <p className="text-[var(--text-secondary)]">Appareil introuvable</p>
-        <Link to="/devices" className="btn-secondary px-4 py-2 text-sm">Retour à la liste</Link>
+        <button onClick={() => navigate(backTo)} className="btn-secondary px-4 py-2 text-sm">Retour à la liste</button>
       </div>
     );
   }
@@ -110,9 +112,9 @@ export default function DeviceDetail() {
       {/* ─── Navigation & titre ────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-3">
-          <Link to="/devices" className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors" aria-label="Retour">
+          <button onClick={() => navigate(backTo)} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors" aria-label="Retour">
             <ArrowLeft size={16} />
-          </Link>
+          </button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold text-[var(--text-primary)]">{device.brand} {device.model}</h1>

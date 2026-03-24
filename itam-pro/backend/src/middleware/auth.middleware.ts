@@ -65,12 +65,13 @@ export function requireRole(...roles: Role[]) {
       res.status(401).json({ message: 'Authentification requise' });
       return;
     }
-    if (!roles.includes(req.currentUser.role)) {
-      res.status(403).json({
-        message: `Accès refusé. Rôle requis : ${roles.join(' ou ')}`,
-      });
+    // MANAGER est superadmin — accès à toutes les actions
+    if (req.currentUser.role === 'MANAGER' || roles.includes(req.currentUser.role)) {
+      next();
       return;
     }
-    next();
+    res.status(403).json({
+      message: `Accès refusé. Rôle requis : ${roles.join(' ou ')}`,
+    });
   };
 }

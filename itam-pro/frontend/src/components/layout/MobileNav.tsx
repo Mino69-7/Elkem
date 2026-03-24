@@ -1,12 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Laptop, Package, Users, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, BookUser, Package, ShieldCheck, BarChart3 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const MOBILE_NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Home' },
-  { to: '/devices',   icon: Laptop,          label: 'Appareils' },
+  { to: '/devices',   icon: BookUser,        label: 'Utilisateurs' },
   { to: '/stock',     icon: Package,         label: 'Stock' },
-  { to: '/users',     icon: Users,           label: 'Utilisateurs' },
+  { to: '/users',     icon: ShieldCheck,     label: 'Admin' },
   { to: '/reports',   icon: BarChart3,       label: 'Rapports' },
 ];
 

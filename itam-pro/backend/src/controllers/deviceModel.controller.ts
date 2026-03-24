@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma.js';
 const modelSchema = z.object({
   name:       z.string().min(1),
   type:       z.enum(['LAPTOP','DESKTOP','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
-  brand:      z.string().default('Dell'),
+  brand:      z.string().min(1),
   processor:  z.string().optional(),
   ram:        z.string().optional(),
   storage:    z.string().optional(),

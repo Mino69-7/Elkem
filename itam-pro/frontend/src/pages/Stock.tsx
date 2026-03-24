@@ -6,14 +6,15 @@ import {
   Plus, Package, ShoppingCart, AlertTriangle, CheckCircle,
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Cpu, MemoryStick, HardDrive,
-  Trash2,
+  Trash2, LayoutGrid, List, ArrowLeft,
 } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import api from '../services/api';
 import { deviceService } from '../services/device.service';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import DeviceForm from '../components/devices/DeviceForm';
 import { DEVICE_TYPE_LABELS, formatDate } from '../utils/formatters';
 import type { DeviceType, Device } from '../types';
@@ -52,6 +53,8 @@ const TYPE_ORDER: DeviceType[] = [
 function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpen: (v: boolean) => void }) {
   const qc       = useQueryClient();
   const navigate = useNavigate();
+  const [viewMode, setViewMode]         = useState<'grid' | 'list'>('grid');
+  const [selectedModel, setSelectedModel] = useState<ModelStock | null>(null);
 
   const { data: modelStock = [], isLoading: loadingModels } = useQuery<ModelStock[]>({
     queryKey: ['stock-summary'],
@@ -97,8 +100,116 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
   const totalOrdered = modelStock.reduce((s, m) => s + m.ordered, 0);
   const alertCount   = modelStock.filter((m) => m.inStock === 0).length;
 
-  const devices = stockDevices?.data  ?? [];
-  const ordered = orderedDevices?.data ?? [];
+  const allDevices = [...(stockDevices?.data ?? []), ...(orderedDevices?.data ?? [])];
+
+  const goToDevice = (deviceId: string) =>
+    navigate(`/devices/${deviceId}`, { state: { from: '/stock' } });
+
+  // ─── Vue détail modèle ──────────────────────────────────────
+
+  if (selectedModel) {
+    const modelDevices = allDevices.filter((d) => d.model === selectedModel.name && d.brand === selectedModel.brand);
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSelectedModel(null)}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div>
+            <p className="font-semibold text-[var(--text-primary)]">{selectedModel.brand} {selectedModel.name}</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              {DEVICE_TYPE_LABELS[selectedModel.type]} · {modelDevices.length} appareil{modelDevices.length !== 1 ? 's' : ''}
+              {selectedModel.processor && ` · ${selectedModel.processor}`}
+              {selectedModel.ram && ` · ${selectedModel.ram}`}
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+              selectedModel.inStock === 0 ? 'bg-amber-400/15 text-amber-400' : 'bg-emerald-400/15 text-emerald-400'
+            }`}>
+              {selectedModel.inStock === 0 ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
+              {selectedModel.inStock} en stock
+            </span>
+            {selectedModel.ordered > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-400/15 text-indigo-400">
+                <ShoppingCart size={11} />
+                +{selectedModel.ordered} commandé{selectedModel.ordered > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {loadingDevices ? (
+          <GlassCard padding="none">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="px-4 py-3 border-b border-[var(--border-glass)]">
+                <Skeleton className="h-4 w-full" />
+              </div>
+            ))}
+          </GlassCard>
+        ) : modelDevices.length === 0 ? (
+          <GlassCard padding="md" className="text-center py-10">
+            <p className="text-sm text-[var(--text-muted)]">Aucun appareil pour ce modèle</p>
+          </GlassCard>
+        ) : (
+          <GlassCard padding="none">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border-glass)]">
+                    {['Tag IT', 'N° Série', 'Site', 'Statut', ''].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {modelDevices.map((device, i) => (
+                    <motion.tr
+                      key={device.id}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      onClick={() => goToDevice(device.id)}
+                      className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
+                        {device.assetTag ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
+                        {device.serialNumber}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                        {device.site ?? '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={device.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] text-primary">Détail →</span>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
+        )}
+
+        <DeviceForm
+          device={null}
+          isOpen={formOpen}
+          isSaving={createMut.isPending}
+          onClose={() => setFormOpen(false)}
+          onSubmit={(data) => createMut.mutate(data)}
+        />
+      </div>
+    );
+  }
+
+  // ─── Vue principale ─────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -140,161 +251,184 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
         </GlassCard>
       ) : (
         <div className="space-y-6">
-          {Object.entries(byType).map(([type, models]) => {
-            const Icon = TYPE_ICONS[type as DeviceType] ?? HelpCircle;
-            return (
-              <div key={type}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon size={14} className="text-[var(--text-muted)]" />
-                  <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                    {DEVICE_TYPE_LABELS[type]}
-                  </h2>
-                  <span className="text-xs text-[var(--text-muted)]">
-                    — {models.reduce((s, m) => s + m.inStock, 0)} disponible{models.reduce((s, m) => s + m.inStock, 0) !== 1 ? 's' : ''}
-                  </span>
-                </div>
+          {/* Toggle vue */}
+          <div className="flex justify-end gap-1">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${viewMode === 'grid' ? 'bg-primary/15 text-primary' : 'text-[var(--text-muted)] hover:bg-white/5'}`}
+              title="Vue grille"
+            >
+              <LayoutGrid size={15} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${viewMode === 'list' ? 'bg-primary/15 text-primary' : 'text-[var(--text-muted)] hover:bg-white/5'}`}
+              title="Vue liste"
+            >
+              <List size={15} />
+            </button>
+          </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {models.map((model, i) => {
-                    const isEmpty = model.inStock === 0;
-                    return (
-                      <motion.div
-                        key={model.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.04 }}
-                      >
-                        <GlassCard padding="md" className="h-full">
-                          <div className="flex items-start justify-between gap-2 mb-3">
-                            <div className="min-w-0">
-                              <p className="font-semibold text-sm text-[var(--text-primary)] truncate">{model.name}</p>
-                              <p className="text-[11px] text-[var(--text-muted)]">{model.brand}</p>
-                            </div>
-                            <div className={`flex-shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
-                              isEmpty
-                                ? 'bg-amber-400/15 text-amber-400'
-                                : 'bg-emerald-400/15 text-emerald-400'
-                            }`}>
-                              {isEmpty ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
-                              {model.inStock}
-                            </div>
-                          </div>
+          {viewMode === 'grid' ? (
+            /* ── Vue grille ──────────────────────────────────── */
+            Object.entries(byType).map(([type, models]) => {
+              const Icon = TYPE_ICONS[type as DeviceType] ?? HelpCircle;
+              return (
+                <div key={type}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Icon size={14} className="text-[var(--text-muted)]" />
+                    <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
+                      {DEVICE_TYPE_LABELS[type]}
+                    </h2>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      — {models.reduce((s, m) => s + m.inStock, 0)} disponible{models.reduce((s, m) => s + m.inStock, 0) !== 1 ? 's' : ''}
+                    </span>
+                  </div>
 
-                          <div className="space-y-1 mb-3">
-                            {model.processor && (
-                              <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                                <Cpu size={11} className="flex-shrink-0 text-indigo-400/60" />
-                                <span className="truncate">{model.processor}</span>
-                              </div>
-                            )}
-                            {model.ram && (
-                              <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                                <MemoryStick size={11} className="flex-shrink-0 text-cyan-400/60" />
-                                <span>{model.ram}</span>
-                              </div>
-                            )}
-                            {model.storage && (
-                              <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                                <HardDrive size={11} className="flex-shrink-0 text-emerald-400/60" />
-                                <span>{model.storage}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="h-1 rounded-full bg-white/5 overflow-hidden mb-2">
-                            <motion.div
-                              className={`h-full rounded-full ${isEmpty ? 'bg-amber-400' : 'bg-emerald-400'}`}
-                              initial={{ width: 0 }}
-                              animate={{ width: isEmpty ? '3%' : `${Math.min((model.inStock / 10) * 100, 100)}%` }}
-                              transition={{ delay: i * 0.04 + 0.2, duration: 0.5 }}
-                            />
-                          </div>
-
-                          <div className="flex justify-between text-[10px] text-[var(--text-muted)]">
-                            <span>{isEmpty ? 'Rupture' : `${model.inStock} dispo`}</span>
-                            {model.ordered > 0 && (
-                              <span className="text-indigo-400">
-                                +{model.ordered} commandé{model.ordered > 1 ? 's' : ''}
-                              </span>
-                            )}
-                          </div>
-                        </GlassCard>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ─── Liste des appareils en stock ────────────────────── */}
-      {(devices.length > 0 || ordered.length > 0) && (
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)] mb-3">
-            Appareils en stock ({devices.length + ordered.length})
-          </h2>
-          <GlassCard padding="none">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--border-glass)]">
-                    {['Tag', 'Modèle', 'Processeur', 'RAM', 'Stockage', 'Site', 'Statut', ''].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingDevices
-                    ? Array.from({ length: 4 }).map((_, i) => (
-                        <tr key={i} className="border-b border-[var(--border-glass)]/50">
-                          {Array.from({ length: 8 }).map((_, j) => (
-                            <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
-                          ))}
-                        </tr>
-                      ))
-                    : [...devices, ...ordered].map((device) => (
-                        <tr
-                          key={device.id}
-                          onClick={() => navigate(`/devices/${device.id}`)}
-                          className="border-b border-[var(--border-glass)]/50 hover:bg-white/3 transition-colors cursor-pointer"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {models.map((model, i) => {
+                      const isEmpty = model.inStock === 0;
+                      return (
+                        <motion.div
+                          key={model.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.04 }}
+                          onClick={() => setSelectedModel(model)}
+                          className="cursor-pointer"
                         >
-                          <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
-                            {device.assetTag}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-primary)] text-sm">{device.model}</td>
-                          <td className="px-4 py-3 text-[var(--text-muted)] text-xs max-w-[160px] truncate">
-                            {device.processor ?? '—'}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-muted)] text-xs whitespace-nowrap">
-                            {device.ram ?? '—'}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-muted)] text-xs whitespace-nowrap">
-                            {device.storage ?? '—'}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-muted)] text-xs">
-                            {device.site ?? '—'}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                              device.status === 'ORDERED'
-                                ? 'bg-indigo-400/15 text-indigo-400'
-                                : 'bg-emerald-400/15 text-emerald-400'
-                            }`}>
-                              {device.status === 'ORDERED' ? 'Commandé' : 'En stock'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-[10px] text-primary">Détail →</span>
-                          </td>
-                        </tr>
-                      ))
-                  }
-                </tbody>
-              </table>
-            </div>
-          </GlassCard>
+                          <GlassCard padding="md" className="h-full hover:border-primary/30 transition-colors">
+                            <div className="flex items-start justify-between gap-2 mb-3">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-[var(--text-primary)] truncate">{model.name}</p>
+                                <p className="text-[11px] text-[var(--text-muted)]">{model.brand}</p>
+                              </div>
+                              <div className={`flex-shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                                isEmpty
+                                  ? 'bg-amber-400/15 text-amber-400'
+                                  : 'bg-emerald-400/15 text-emerald-400'
+                              }`}>
+                                {isEmpty ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
+                                {model.inStock}
+                              </div>
+                            </div>
+
+                            <div className="space-y-1 mb-3">
+                              {model.processor && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                                  <Cpu size={11} className="flex-shrink-0 text-indigo-400/60" />
+                                  <span className="truncate">{model.processor}</span>
+                                </div>
+                              )}
+                              {model.ram && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                                  <MemoryStick size={11} className="flex-shrink-0 text-cyan-400/60" />
+                                  <span>{model.ram}</span>
+                                </div>
+                              )}
+                              {model.storage && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                                  <HardDrive size={11} className="flex-shrink-0 text-emerald-400/60" />
+                                  <span>{model.storage}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="h-1 rounded-full bg-white/5 overflow-hidden mb-2">
+                              <motion.div
+                                className={`h-full rounded-full ${isEmpty ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                                initial={{ width: 0 }}
+                                animate={{ width: isEmpty ? '3%' : `${Math.min((model.inStock / 10) * 100, 100)}%` }}
+                                transition={{ delay: i * 0.04 + 0.2, duration: 0.5 }}
+                              />
+                            </div>
+
+                            <div className="flex justify-between text-[10px] text-[var(--text-muted)]">
+                              <span>{isEmpty ? 'Rupture' : `${model.inStock} dispo`}</span>
+                              {model.ordered > 0 && (
+                                <span className="text-indigo-400">
+                                  +{model.ordered} commandé{model.ordered > 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </GlassCard>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            /* ── Vue liste ───────────────────────────────────── */
+            <GlassCard padding="none">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border-glass)]">
+                      {['Modèle', 'Processeur', 'RAM', 'Stockage', 'En stock', 'Commandés'].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(byType).flatMap(([type, models]) =>
+                      models.map((model, i) => {
+                        const Icon = TYPE_ICONS[type as DeviceType] ?? HelpCircle;
+                        const isEmpty = model.inStock === 0;
+                        return (
+                          <motion.tr
+                            key={model.id}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: i * 0.02 }}
+                            onClick={() => setSelectedModel(model)}
+                            className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
+                          >
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Icon size={13} className="text-[var(--text-muted)] flex-shrink-0" />
+                                <div>
+                                  <p className="text-sm font-medium text-[var(--text-primary)]">{model.name}</p>
+                                  <p className="text-[10px] text-[var(--text-muted)]">{model.brand}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-[var(--text-muted)] max-w-[160px] truncate">
+                              {model.processor ?? '—'}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">
+                              {model.ram ?? '—'}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">
+                              {model.storage ?? '—'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                                isEmpty ? 'bg-amber-400/15 text-amber-400' : 'bg-emerald-400/15 text-emerald-400'
+                              }`}>
+                                {isEmpty ? <AlertTriangle size={10} /> : <CheckCircle size={10} />}
+                                {model.inStock}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {model.ordered > 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-400/15 text-indigo-400">
+                                  +{model.ordered}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-[var(--text-muted)]">—</span>
+                              )}
+                            </td>
+                          </motion.tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </GlassCard>
+          )}
         </div>
       )}
 
@@ -371,7 +505,7 @@ function TabDechets() {
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.02 }}
-                      onClick={() => navigate(`/devices/${device.id}`)}
+                      onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock' } })}
                       className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
                       <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
@@ -395,13 +529,7 @@ function TabDechets() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <Link
-                          to={`/devices/${device.id}`}
-                          className="text-[10px] text-primary hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Détail →
-                        </Link>
+                        <span className="text-[10px] text-primary">Détail →</span>
                       </td>
                     </motion.tr>
                   );

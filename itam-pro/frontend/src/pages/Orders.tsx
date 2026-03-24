@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   ShoppingCart, Plus, Lock, CheckCircle, Clock, AlertTriangle,
-  X, Save, Package, Bell, Pencil, Trash2,
+  X, Save, Package, Bell, Pencil, Trash2, History, User,
   Laptop, Monitor, Smartphone, Tablet, Printer,
   Keyboard, Mouse, Headphones, Layers, HelpCircle,
 } from 'lucide-react';
@@ -15,7 +15,7 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { AppSelect } from '../components/ui/AppSelect';
 import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
-import { usePurchaseOrders, useCreateOrder, useCancelOrder, useReceiveDevice } from '../hooks/usePurchaseOrders';
+import { usePurchaseOrders, useOrderHistory, useCreateOrder, useCancelOrder, useReceiveDevice } from '../hooks/usePurchaseOrders';
 import { DEVICE_TYPE_LABELS, formatDate } from '../utils/formatters';
 import type { DeviceModel, DeviceType, PurchaseOrder, POStatus } from '../types';
 import type { POFormData, ReceiveDeviceData } from '../services/purchaseOrder.service';
@@ -95,19 +95,34 @@ interface ReceiveModalProps {
   onSubmit: (data: ReceiveDeviceData) => void;
   isPending: boolean;
   error?: string;
+  resetKey: number;
+  lastReceivedSn?: string;
 }
 
-function ReceiveModal({ order, onClose, onSubmit, isPending, error }: ReceiveModalProps) {
-  const [sn, setSn]         = useState('');
-  const [tag, setTag]       = useState('');
-  const [notes, setNotes]   = useState('');
+function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, lastReceivedSn }: ReceiveModalProps) {
+  const [sn, setSn]       = useState('');
+  const [notes, setNotes] = useState('');
+  const snRef             = useRef<HTMLInputElement>(null);
+
+  // Réinitialise le formulaire après chaque réception réussie et refocalise le champ SN
+  useEffect(() => {
+    if (resetKey === 0) return;
+    setSn('');
+    setNotes('');
+    setTimeout(() => snRef.current?.focus(), 50);
+  }, [resetKey]);
 
   if (!order) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ serialNumber: sn, assetTag: tag.toUpperCase(), notes: notes || undefined });
+    if (!sn.trim()) return;
+    onSubmit({ serialNumber: sn.trim(), notes: notes.trim() || undefined });
   };
+
+  const received = order.receivedCount;
+  const total    = order.quantity;
+  const pct      = total > 0 ? Math.min((received / total) * 100, 100) : 0;
 
   return (
     <Dialog.Root open={!!order} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -116,23 +131,64 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error }: ReceiveMod
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md"
           style={{ background: 'var(--bg-secondary)' }}
+          onOpenAutoFocus={(e) => { e.preventDefault(); snRef.current?.focus(); }}
         >
           <div className="glass-card rounded-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between">
+
+            {/* En-tête */}
+            <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-base font-semibold text-[var(--text-primary)]">Réceptionner un appareil</h2>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">Réception en cours</h2>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">Commande {order.reference}</p>
               </div>
-              <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5">
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-3">
+                {/* Compteur réceptionné / total */}
+                <div className="text-right">
+                  <span className="text-xl font-bold text-[var(--text-primary)]">{received}</span>
+                  <span className="text-sm text-[var(--text-muted)]"> / {total}</span>
+                  <p className="text-[10px] text-[var(--text-muted)]">réceptionnés</p>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5"
+                  title="Fermer (les appareils déjà réceptionnés sont enregistrés)"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
+            {/* Barre de progression */}
+            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-emerald-400"
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: 0.4 }}
+              />
+            </div>
+
+            {/* Flash succès dernier SN */}
+            <AnimatePresence>
+              {lastReceivedSn && (
+                <motion.div
+                  key={lastReceivedSn + resetKey}
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2"
+                >
+                  <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+                  <span className="text-xs text-emerald-400 font-mono">{lastReceivedSn}</span>
+                  <span className="text-xs text-emerald-400/70">enregistré</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Infos modèle verrouillées */}
-            <div className="rounded-xl border border-[var(--border-glass)] bg-white/[0.02] p-3 space-y-2">
+            <div className="rounded-xl border border-[var(--border-glass)] bg-white/[0.02] p-3 space-y-1.5">
               <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">
                 <Lock size={10} />
-                Modèle verrouillé (commande {order.reference})
+                Modèle verrouillé — Tag {order.reference}
               </div>
               {[
                 { label: 'Modèle', value: order.deviceModel.name },
@@ -146,24 +202,15 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error }: ReceiveMod
               ))}
             </div>
 
+            {/* Formulaire */}
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-[var(--text-muted)]">Tag IT *</label>
-                <input
-                  value={tag}
-                  onChange={(e) => setTag(e.target.value.toUpperCase())}
-                  placeholder="ELKEM-LT-001"
-                  pattern="[A-Z0-9-]+"
-                  required
-                  className="input-glass py-2 text-sm font-mono"
-                />
-              </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-[var(--text-muted)]">Numéro de série *</label>
                 <input
+                  ref={snRef}
                   value={sn}
                   onChange={(e) => setSn(e.target.value)}
-                  placeholder="ABC123XYZ"
+                  placeholder="Scannez ou saisissez le SN…"
                   required
                   className="input-glass py-2 text-sm font-mono"
                 />
@@ -173,23 +220,33 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error }: ReceiveMod
                 <input
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Observations…"
+                  placeholder="Observations optionnelles…"
                   className="input-glass py-2 text-sm"
                 />
               </div>
 
               {error && (
-                <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2"
+                >
+                  {error}
+                </motion.p>
               )}
 
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={onClose} className="btn-secondary flex-1 flex items-center justify-center gap-1.5 py-2 text-sm">
-                  <X size={14} /> Annuler
-                </button>
-                <button type="submit" disabled={isPending} className="btn-primary flex-1 flex items-center justify-center gap-1.5 py-2 text-sm disabled:opacity-50">
-                  <CheckCircle size={14} /> Réceptionner
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={isPending || !sn.trim()}
+                className="btn-primary w-full flex items-center justify-center gap-2 py-2.5 text-sm disabled:opacity-50"
+              >
+                <CheckCircle size={15} />
+                {isPending ? 'Enregistrement…' : `Réceptionner (${received + 1}/${total})`}
+              </button>
+
+              <p className="text-[10px] text-center text-[var(--text-muted)]">
+                Fermer avec ✕ pour interrompre — les appareils déjà réceptionnés sont enregistrés
+              </p>
             </form>
           </div>
         </Dialog.Content>
@@ -205,21 +262,33 @@ interface POFormProps {
   onSubmit: (data: POFormData) => void;
   onCancel: () => void;
   isPending: boolean;
-  currentYear: number;
   nextRef: string;
 }
 
 function POForm({ models, onSubmit, onCancel, isPending, nextRef }: POFormProps) {
-  const [form, setForm] = useState<POFormData>({
+  const [form, setForm]           = useState<POFormData>({
     reference:     nextRef,
     deviceModelId: '',
     quantity:      1,
     expectedAt:    '',
     notes:         '',
   });
+  const [selectedType, setSelectedType] = useState<DeviceType | ''>('');
 
-  const activeModels = models.filter((m) => m.isActive);
-  const modelOptions = activeModels.map((m) => ({ value: m.id, label: `${m.name} — ${m.brand}` }));
+  const activeModels   = models.filter((m) => m.isActive);
+  const filteredModels = selectedType
+    ? activeModels.filter((m) => m.type === selectedType)
+    : activeModels;
+  const modelOptions   = filteredModels.map((m) => ({ value: m.id, label: `${m.name} — ${m.brand}` }));
+
+  const handleTypeChange = (v: string) => {
+    setSelectedType(v as DeviceType | '');
+    // Réinitialise le modèle si il n'appartient plus au type sélectionné
+    const current = activeModels.find((m) => m.id === form.deviceModelId);
+    if (current && v && current.type !== v) {
+      setForm((s) => ({ ...s, deviceModelId: '' }));
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -255,13 +324,22 @@ function POForm({ models, onSubmit, onCancel, isPending, nextRef }: POFormProps)
             className="input-glass py-2 text-sm"
           />
         </div>
-        <div className="col-span-2 flex flex-col gap-1">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-[var(--text-muted)]">Type</label>
+          <AppSelect
+            value={selectedType}
+            onChange={handleTypeChange}
+            options={TYPE_OPTIONS}
+            placeholder="Tous les types…"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
           <label className="text-xs text-[var(--text-muted)]">Modèle *</label>
           <AppSelect
             value={form.deviceModelId}
             onChange={(v) => setForm((s) => ({ ...s, deviceModelId: v }))}
             options={modelOptions}
-            placeholder="Choisir un modèle…"
+            placeholder={selectedType ? 'Choisir un modèle…' : 'Choisir un type d\'abord…'}
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -301,7 +379,7 @@ function POForm({ models, onSubmit, onCancel, isPending, nextRef }: POFormProps)
 
 // ─── Onglet Commandes ─────────────────────────────────────────
 
-function TabOrders({ isManager }: { isManager: boolean }) {
+function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string }) {
   const qc = useQueryClient();
   const { data: orders = [], isLoading } = usePurchaseOrders();
   const createMut  = useCreateOrder();
@@ -311,6 +389,8 @@ function TabOrders({ isManager }: { isManager: boolean }) {
   const [showForm,        setShowForm]        = useState(false);
   const [receivingOrder,  setReceivingOrder]  = useState<PurchaseOrder | null>(null);
   const [receiveError,    setReceiveError]    = useState('');
+  const [resetKey,        setResetKey]        = useState(0);
+  const [lastReceivedSn,  setLastReceivedSn]  = useState('');
 
   // Récupération des modèles pour le formulaire
   const { data: allModels = [] } = useQuery<DeviceModel[]>({
@@ -319,16 +399,12 @@ function TabOrders({ isManager }: { isManager: boolean }) {
     staleTime: 60_000,
   });
 
-  // Auto-suggestion de référence
-  const year = new Date().getFullYear();
-  const nextRef = useMemo(() => {
-    const refs = orders.map((o) => o.reference).filter((r) => r.startsWith(`CMD-${year}-`));
-    const maxN = refs.reduce((max, r) => {
-      const n = parseInt(r.split('-')[2] ?? '0');
-      return n > max ? n : max;
-    }, 0);
-    return `CMD-${year}-${String(maxN + 1).padStart(3, '0')}`;
-  }, [orders, year]);
+  const closeReceiveModal = () => {
+    setReceivingOrder(null);
+    setLastReceivedSn('');
+    setResetKey(0);
+    setReceiveError('');
+  };
 
   const handleReceive = (data: ReceiveDeviceData) => {
     if (!receivingOrder) return;
@@ -337,9 +413,23 @@ function TabOrders({ isManager }: { isManager: boolean }) {
       { orderId: receivingOrder.id, data },
       {
         onSuccess: () => {
-          setReceivingOrder(null);
+          const newCount = receivingOrder.receivedCount + 1;
+          qc.invalidateQueries({ queryKey: ['orders'] });
+          qc.invalidateQueries({ queryKey: ['orders-history'] });
           qc.invalidateQueries({ queryKey: ['stock-summary'] });
           qc.invalidateQueries({ queryKey: ['stock-devices'] });
+
+          if (newCount >= receivingOrder.quantity) {
+            // Commande complète — fermeture automatique
+            closeReceiveModal();
+          } else {
+            // Reste des appareils à réceptionner — on garde le modal ouvert
+            setLastReceivedSn(data.serialNumber);
+            setResetKey((k) => k + 1);
+            setReceivingOrder((prev) =>
+              prev ? { ...prev, receivedCount: newCount } : null
+            );
+          }
         },
         onError: (err: any) => {
           setReceiveError(err?.response?.data?.message ?? 'Erreur lors de la réception');
@@ -384,7 +474,6 @@ function TabOrders({ isManager }: { isManager: boolean }) {
                 onSubmit={(data) => { createMut.mutate(data, { onSuccess: () => setShowForm(false) }); }}
                 onCancel={() => setShowForm(false)}
                 isPending={createMut.isPending}
-                currentYear={year}
                 nextRef={nextRef}
               />
             </GlassCard>
@@ -435,7 +524,7 @@ function TabOrders({ isManager }: { isManager: boolean }) {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {order.status !== 'COMPLETE' && order.status !== 'CANCELLED' && (
                       <button
-                        onClick={() => { setReceiveError(''); setReceivingOrder(order); }}
+                        onClick={() => { setReceiveError(''); setLastReceivedSn(''); setResetKey(0); setReceivingOrder(order); }}
                         className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs"
                       >
                         <Package size={13} /> Réceptionner
@@ -461,10 +550,12 @@ function TabOrders({ isManager }: { isManager: boolean }) {
       {/* Modal réception */}
       <ReceiveModal
         order={receivingOrder}
-        onClose={() => setReceivingOrder(null)}
+        onClose={closeReceiveModal}
         onSubmit={handleReceive}
         isPending={receiveMut.isPending}
         error={receiveError}
+        resetKey={resetKey}
+        lastReceivedSn={lastReceivedSn}
       />
     </div>
   );
@@ -473,11 +564,11 @@ function TabOrders({ isManager }: { isManager: boolean }) {
 // ─── Onglet Catalogue modèles ─────────────────────────────────
 
 interface ModelFormState {
-  name: string; type: DeviceType | '';
+  name: string; type: DeviceType | ''; brand: string;
   processor: string; ram: string; storage: string; screenSize: string; notes: string;
 }
 
-const emptyModel: ModelFormState = { name: '', type: '', processor: '', ram: '', storage: '', screenSize: '', notes: '' };
+const emptyModel: ModelFormState = { name: '', type: '', brand: '', processor: '', ram: '', storage: '', screenSize: '', notes: '' };
 
 function TabCatalogue({ isManager }: { isManager: boolean }) {
   const qc = useQueryClient();
@@ -516,13 +607,22 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
 
   const openEditModel = (m: DeviceModel) => {
     setEditingModel(m);
-    setModelForm({ name: m.name, type: m.type, processor: m.processor ?? '', ram: m.ram ?? '', storage: m.storage ?? '', screenSize: m.screenSize ?? '', notes: m.notes ?? '' });
+    setModelForm({ name: m.name, type: m.type, brand: m.brand, processor: m.processor ?? '', ram: m.ram ?? '', storage: m.storage ?? '', screenSize: m.screenSize ?? '', notes: m.notes ?? '' });
     setShowModelForm(true);
   };
 
   const handleSaveModel = () => {
-    if (!modelForm.name || !modelForm.type) return;
-    const payload = { name: modelForm.name, type: modelForm.type as DeviceType, brand: 'Dell', processor: modelForm.processor || undefined, ram: modelForm.ram || undefined, storage: modelForm.storage || undefined, screenSize: modelForm.screenSize || undefined, notes: modelForm.notes || undefined };
+    if (!modelForm.name || !modelForm.type || !modelForm.brand) return;
+    const payload = {
+      name:       modelForm.name,
+      type:       modelForm.type as DeviceType,
+      brand:      modelForm.brand,
+      processor:  modelForm.processor  || undefined,
+      ram:        modelForm.ram        || undefined,
+      storage:    modelForm.storage    || undefined,
+      screenSize: modelForm.screenSize || undefined,
+      notes:      modelForm.notes      || undefined,
+    };
     if (editingModel) updateModelMut.mutate({ id: editingModel.id, data: payload });
     else createModelMut.mutate(payload);
   };
@@ -558,36 +658,43 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                 {editingModel ? `Modifier — ${editingModel.name}` : 'Nouveau modèle'}
               </h3>
               <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-[var(--text-muted)]">Nom *</label>
-                  <input value={modelForm.name} onChange={(e) => setModelForm((s) => ({ ...s, name: e.target.value }))} placeholder="Latitude 5460" className="input-glass py-2 text-sm" />
-                </div>
+                {/* Ligne 1 : Type + Marque */}
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-[var(--text-muted)]">Type *</label>
                   <AppSelect value={modelForm.type} onChange={(v) => setModelForm((s) => ({ ...s, type: v as DeviceType }))} options={TYPE_OPTIONS} placeholder="Type…" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs text-[var(--text-muted)]">Processeur</label>
-                  <input value={modelForm.processor} onChange={(e) => setModelForm((s) => ({ ...s, processor: e.target.value }))} placeholder="Intel Core i5-1345U" className="input-glass py-2 text-sm" />
+                  <label className="text-xs text-[var(--text-muted)]">Marque *</label>
+                  <input value={modelForm.brand} onChange={(e) => setModelForm((s) => ({ ...s, brand: e.target.value }))} placeholder="Dell, Apple, Samsung…" className="input-glass py-2 text-sm" />
+                </div>
+                {/* Ligne 2 : Nom (pleine largeur) */}
+                <div className="col-span-2 flex flex-col gap-1">
+                  <label className="text-xs text-[var(--text-muted)]">Nom du modèle *</label>
+                  <input value={modelForm.name} onChange={(e) => setModelForm((s) => ({ ...s, name: e.target.value }))} placeholder="iPhone 17 Pro, Latitude 5460, UltraSharp 27…" className="input-glass py-2 text-sm" />
+                </div>
+                {/* Ligne 3 : Specs */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-[var(--text-muted)]">Processeur / Puce</label>
+                  <input value={modelForm.processor} onChange={(e) => setModelForm((s) => ({ ...s, processor: e.target.value }))} placeholder="A18 Pro, Core i7-1265U…" className="input-glass py-2 text-sm" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-[var(--text-muted)]">RAM</label>
-                  <input value={modelForm.ram} onChange={(e) => setModelForm((s) => ({ ...s, ram: e.target.value }))} placeholder="16 Go DDR4" className="input-glass py-2 text-sm" />
+                  <input value={modelForm.ram} onChange={(e) => setModelForm((s) => ({ ...s, ram: e.target.value }))} placeholder="8 Go, 16 Go DDR5…" className="input-glass py-2 text-sm" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-[var(--text-muted)]">Stockage</label>
-                  <input value={modelForm.storage} onChange={(e) => setModelForm((s) => ({ ...s, storage: e.target.value }))} placeholder="256 Go SSD NVMe" className="input-glass py-2 text-sm" />
+                  <input value={modelForm.storage} onChange={(e) => setModelForm((s) => ({ ...s, storage: e.target.value }))} placeholder="256 Go, 1 To SSD…" className="input-glass py-2 text-sm" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-[var(--text-muted)]">Taille écran</label>
-                  <input value={modelForm.screenSize} onChange={(e) => setModelForm((s) => ({ ...s, screenSize: e.target.value }))} placeholder='14"' className="input-glass py-2 text-sm" />
+                  <input value={modelForm.screenSize} onChange={(e) => setModelForm((s) => ({ ...s, screenSize: e.target.value }))} placeholder='6.3", 14", 27"…' className="input-glass py-2 text-sm" />
                 </div>
               </div>
               <div className="flex gap-2 mt-3">
                 <button onClick={resetModelForm} className="btn-secondary flex items-center gap-1.5 px-3 py-2 text-xs"><X size={13} /> Annuler</button>
                 <button
                   onClick={handleSaveModel}
-                  disabled={!modelForm.name || !modelForm.type || createModelMut.isPending || updateModelMut.isPending}
+                  disabled={!modelForm.name || !modelForm.type || !modelForm.brand || createModelMut.isPending || updateModelMut.isPending}
                   className="btn-primary flex items-center gap-1.5 px-3 py-2 text-xs disabled:opacity-50"
                 >
                   <Save size={13} /> {editingModel ? 'Enregistrer' : 'Créer'}
@@ -625,7 +732,10 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                     <div className="flex-1 min-w-0">
                       <p className={clsx('text-sm font-medium', m.isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)] line-through')}>{m.name}</p>
                       <p className="text-[10px] text-[var(--text-muted)] truncate">
-                        {[m.processor, m.ram, m.storage, m.screenSize].filter(Boolean).join(' · ')}
+                        <span className="text-[var(--text-secondary)]">{m.brand}</span>
+                        {[m.processor, m.ram, m.storage, m.screenSize].filter(Boolean).length > 0 && (
+                          <span> · {[m.processor, m.ram, m.storage, m.screenSize].filter(Boolean).join(' · ')}</span>
+                        )}
                       </p>
                     </div>
                     <div className="flex gap-1 flex-shrink-0 items-center">
@@ -767,12 +877,92 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
   );
 }
 
+// ─── Onglet Historique ────────────────────────────────────────
+
+function TabHistory() {
+  const { data: history = [], isLoading } = useOrderHistory();
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <GlassCard key={i} padding="md"><Skeleton className="h-14 w-full" /></GlassCard>
+        ))}
+      </div>
+    );
+  }
+
+  if (history.length === 0) {
+    return (
+      <GlassCard padding="md" className="text-center py-12">
+        <History size={32} className="mx-auto mb-3 text-[var(--text-muted)] opacity-40" />
+        <p className="text-sm text-[var(--text-muted)]">Aucune commande dans l'historique</p>
+      </GlassCard>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {history.map((order, i) => (
+        <motion.div
+          key={order.id}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.02 }}
+        >
+          <GlassCard padding="md">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">{order.reference}</span>
+                  <POStatusBadge status={order.status} />
+                </div>
+                <div className="text-xs text-[var(--text-secondary)]">
+                  {order.deviceModel.brand} {order.deviceModel.name}
+                  <span className="text-[var(--text-muted)] ml-2">— {DEVICE_TYPE_LABELS[order.deviceModel.type]}</span>
+                </div>
+                <div className="flex items-center gap-4 text-[10px] text-[var(--text-muted)]">
+                  <span className="flex items-center gap-1">
+                    <Clock size={10} />
+                    {formatDate(order.createdAt)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <User size={10} />
+                    {order.createdBy?.displayName ?? '—'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex-shrink-0 text-right">
+                <div className="text-sm font-semibold text-[var(--text-primary)]">
+                  {order.receivedCount} / {order.quantity}
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)]">appareils reçus</div>
+              </div>
+            </div>
+          </GlassCard>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Composant principal ──────────────────────────────────────
 
 export default function Orders() {
   const { user } = useAuthStore();
-  const isManager    = user?.role === 'MANAGER';
-  const isTechnician = user?.role === 'TECHNICIAN' || isManager;
+  const isManager = user?.role === 'MANAGER';
+
+  // nextRef calculé depuis l'historique complet pour éviter les doublons
+  const { data: history = [] } = useOrderHistory();
+  const year = new Date().getFullYear();
+  const nextRef = useMemo(() => {
+    const refs = history.map((o) => o.reference).filter((r) => r.startsWith(`CMD-${year}-`));
+    const maxN = refs.reduce((max, r) => {
+      const n = parseInt(r.split('-')[2] ?? '0');
+      return n > max ? n : max;
+    }, 0);
+    return `CMD-${year}-${String(maxN + 1).padStart(3, '0')}`;
+  }, [history, year]);
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -785,9 +975,10 @@ export default function Orders() {
       <Tabs.Root defaultValue="orders">
         <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] bg-white/[0.02] w-fit mb-6">
           {[
-            { value: 'orders',   label: 'Commandes' },
+            { value: 'orders',    label: 'Commandes' },
             { value: 'catalogue', label: 'Catalogue modèles' },
-            { value: 'alerts',   label: 'Règles d\'alerte' },
+            { value: 'alerts',    label: 'Règles d\'alerte' },
+            { value: 'history',   label: 'Historique' },
           ].map((tab) => (
             <Tabs.Trigger
               key={tab.value}
@@ -804,13 +995,16 @@ export default function Orders() {
         </Tabs.List>
 
         <Tabs.Content value="orders">
-          <TabOrders isManager={isManager} />
+          <TabOrders isManager={isManager} nextRef={nextRef} />
         </Tabs.Content>
         <Tabs.Content value="catalogue">
           <TabCatalogue isManager={isManager} />
         </Tabs.Content>
         <Tabs.Content value="alerts">
           <TabAlerts isManager={isManager} />
+        </Tabs.Content>
+        <Tabs.Content value="history">
+          <TabHistory />
         </Tabs.Content>
       </Tabs.Root>
     </div>
