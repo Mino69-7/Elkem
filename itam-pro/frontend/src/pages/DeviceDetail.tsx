@@ -214,10 +214,11 @@ function QuickAddForm({
 
 // ─── Onglet équipements ───────────────────────────────────────
 
-function TabEquipement({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+function TabEquipement({ userId, canEdit, isManager }: { userId: string; canEdit: boolean; isManager?: boolean }) {
   const qc = useQueryClient();
-  const [addingType,      setAddingType]      = useState<DeviceType | null>(null);
+  const [addingType,       setAddingType]       = useState<DeviceType | null>(null);
   const [directAddingType, setDirectAddingType] = useState<DeviceType | null>(null);
+  const [editingDevice,    setEditingDevice]    = useState<Device | null>(null);
 
   const { data: userDevices = [], isLoading } = useQuery<Device[]>({
     queryKey: ['user-devices', userId],
@@ -267,6 +268,15 @@ function TabEquipement({ userId, canEdit }: { userId: string; canEdit: boolean }
     onSuccess: () => qc.invalidateQueries({ queryKey: ['user-devices', userId] }),
   });
 
+  // Mise à jour d'un équipement depuis l'onglet
+  const updateEquipMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: object }) => api.put(`/devices/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      setEditingDevice(null);
+    },
+  });
+
   const handleAddClick = (cat: EquipCategory) => {
     const mode = getAddMode(cat.type);
     if (mode === 'instant') {
@@ -304,6 +314,7 @@ function TabEquipement({ userId, canEdit }: { userId: string; canEdit: boolean }
           const isAdding = addingType === cat.type;
           const isDocking = cat.type === 'DOCKING_STATION';
           const isDirectLoading = directAddingType === cat.type;
+          const isDuplicate = cat.section === 'workstation' && devices.length > 1;
           const { Icon } = cat;
 
           return (
@@ -317,6 +328,14 @@ function TabEquipement({ userId, canEdit }: { userId: string; canEdit: boolean }
                 <span className={`text-sm font-medium flex-1 ${hasItems ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
                   {cat.label}
                 </span>
+
+                {/* Badge doublon workstation */}
+                {isDuplicate && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 text-[9px] font-semibold">
+                    <AlertTriangle size={9} />
+                    {devices.length} appareils
+                  </span>
+                )}
 
                 {isDocking ? (
                   // ── Docking : toggle Oui / Non ──
@@ -381,6 +400,15 @@ function TabEquipement({ userId, canEdit }: { userId: string; canEdit: boolean }
                     )}
                   </div>
                   <StatusBadge status={d.status} />
+                  {canEdit && (
+                    <button
+                      onClick={() => setEditingDevice(d)}
+                      className="ml-1 p-1 rounded-lg text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors"
+                      aria-label="Modifier"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  )}
                 </div>
               ))}
 
@@ -419,6 +447,18 @@ function TabEquipement({ userId, canEdit }: { userId: string; canEdit: boolean }
     <div className="space-y-4">
       {renderSection('Poste de travail', workstations)}
       {renderSection('Périphériques', peripherals)}
+
+      {/* Formulaire d'édition d'un équipement */}
+      {canEdit && (
+        <DeviceForm
+          device={editingDevice}
+          isOpen={!!editingDevice}
+          isSaving={updateEquipMut.isPending}
+          isManager={isManager}
+          onClose={() => setEditingDevice(null)}
+          onSubmit={(data) => editingDevice && updateEquipMut.mutate({ id: editingDevice.id, data })}
+        />
+      )}
     </div>
   );
 }
@@ -513,7 +553,6 @@ export default function DeviceDetail() {
                 <span className="text-sm text-[var(--text-muted)]">{device.brand} {device.model}</span>
                 <StatusBadge status={device.status} />
               </div>
-              <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">{device.assetTag} · {device.serialNumber}</p>
             </div>
           ) : (
             <div>
@@ -659,7 +698,7 @@ export default function DeviceDetail() {
         {/* ── Équipement ── */}
         {device.assignedUser && (
           <Tabs.Content value="equipment" className="mt-4">
-            <TabEquipement userId={device.assignedUser.id} canEdit={canEdit} />
+            <TabEquipement userId={device.assignedUser.id} canEdit={canEdit} isManager={isManager} />
           </Tabs.Content>
         )}
 
@@ -751,6 +790,7 @@ export default function DeviceDetail() {
           device={device}
           isOpen={formOpen}
           isSaving={updateMut.isPending}
+          isManager={isManager}
           onClose={() => setFormOpen(false)}
           onSubmit={handleUpdate}
         />

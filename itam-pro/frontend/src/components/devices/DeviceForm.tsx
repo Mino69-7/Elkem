@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 import { AppSelect } from '../ui/AppSelect';
 import { UserCombobox } from '../ui/UserCombobox';
-import type { Device, DeviceModel, PurchaseOrder } from '../../types';
+import type { Device, DeviceModel } from '../../types';
 import type { DeviceFormData } from '../../services/device.service';
 import { KEYBOARD_LAYOUT_LABELS, ELKEM_SITES, DEVICE_TYPE_LABELS } from '../../utils/formatters';
 import api from '../../services/api';
@@ -35,17 +35,38 @@ const KEYBOARD_OPTIONS = KEYBOARD_FORM_OPTIONS.map((k) => ({
   label: KEYBOARD_LAYOUT_LABELS[k] ?? k,
 }));
 
+// ─── Schéma Zod (hors composant) ──────────────────────────────
+
+const schema = z.object({
+  assignedUserId:  z.string().optional(),
+  assetTag:        z.string().min(1, 'Requis').regex(/^[A-Z0-9-]+$/, 'Majuscules, chiffres et tirets uniquement'),
+  serialNumber:    z.string().min(1, 'Requis'),
+  site:            z.string().default('SUD'),
+  status:          z.string().default('IN_STOCK'),
+  type:            z.string().min(1, 'Requis'),
+  modelId:         z.string().min(1, 'Requis'),
+  processor:       z.string().optional(),
+  ram:             z.string().optional(),
+  storage:         z.string().optional(),
+  screenSize:      z.string().optional(),
+  keyboardLayout:  z.string().default('AZERTY_FR'),
+  notes:           z.string().optional(),
+  purchaseOrderId: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
+
 // ─── Props ────────────────────────────────────────────────────
 
 interface DeviceFormProps {
-  device?:     Device | null;
-  isOpen:      boolean;
-  isSaving:    boolean;
-  isManager?:  boolean;
-  requireUser?: boolean;   // Utilisateurs page : assignedUser obligatoire
-  formTitle?:  string;     // Override titre (ex: "Nouvel utilisateur")
-  onClose:     () => void;
-  onSubmit:    (data: DeviceFormData) => void;
+  device?:      Device | null;
+  isOpen:       boolean;
+  isSaving:     boolean;
+  isManager?:   boolean;
+  requireUser?: boolean;
+  formTitle?:   string;
+  onClose:      () => void;
+  onSubmit:     (data: DeviceFormData) => void;
 }
 
 // ─── Champ de formulaire ──────────────────────────────────────
@@ -76,40 +97,16 @@ export default function DeviceForm({
   const [assignedUserDisplay, setAssignedUserDisplay] = useState<string | undefined>(undefined);
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
 
-  // ── Schéma dynamique (assignedUserId obligatoire si requireUser) ──
-  const schema = useMemo(() => z.object({
-    assignedUserId: requireUser
-      ? z.string().min(1, 'Utilisateur requis')
-      : z.string().optional(),
-    assetTag:       z.string().min(1, 'Requis').regex(/^[A-Z0-9-]+$/, 'Majuscules, chiffres et tirets uniquement'),
-    serialNumber:   z.string().min(1, 'Requis'),
-    site:           z.string().default('SUD'),
-    status:         z.string().default(requireUser ? 'ASSIGNED' : 'IN_STOCK'),
-    type:           z.string().min(1, 'Requis'),
-    modelId:        z.string().min(1, 'Requis'),
-    processor:      z.string().optional(),
-    ram:            z.string().optional(),
-    storage:        z.string().optional(),
-    screenSize:     z.string().optional(),
-    keyboardLayout: z.string().default('AZERTY_FR'),
-    notes:          z.string().optional(),
-    purchaseOrderId: z.string().optional(),
-  }), [requireUser]);
-
-  type FormValues = z.infer<typeof schema>;
-
-  const { control, register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormValues>({
+  const {
+    control, register, handleSubmit, reset, watch, setValue, setError,
+    formState: { errors },
+  } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      keyboardLayout:  'AZERTY_FR',
-      status:          requireUser ? 'ASSIGNED' : 'IN_STOCK',
-      site:            'SUD',
-      assignedUserId:  '',
-    },
+    defaultValues: { keyboardLayout: 'AZERTY_FR', status: 'IN_STOCK', site: 'SUD', assignedUserId: '' },
   });
 
-  const selectedType   = watch('type');
-  const serialNumber   = watch('serialNumber');
+  const selectedType  = watch('type');
+  const serialNumber  = watch('serialNumber');
 
   // ── Chargement des modèles ────────────────────────────────
   const { data: models = [] } = useQuery<DeviceModel[]>({
@@ -119,21 +116,8 @@ export default function DeviceForm({
       const { data } = await api.get<DeviceModel[]>(url);
       return data;
     },
-    enabled:  isOpen,
+    enabled: isOpen,
   });
-
-  // ── Chargement des commandes (manager en mode édition) ────
-  const { data: purchaseOrders = [] } = useQuery<PurchaseOrder[]>({
-    queryKey: ['purchase-orders-all'],
-    queryFn:  () => api.get('/orders/history').then((r) => r.data),
-    enabled:  isOpen && !!isManager && isEdit,
-    staleTime: 60_000,
-  });
-
-  const poOptions = purchaseOrders.map((po) => ({
-    value: po.id,
-    label: `${po.reference} — ${po.deviceModel?.name ?? ''}`,
-  }));
 
   const modelOptions = models.map((m) => ({ value: m.id, label: m.name }));
 
@@ -144,9 +128,9 @@ export default function DeviceForm({
       onModelChange(pendingModelId);
       setPendingModelId(null);
     }
-  }, [models, pendingModelId]);
+  }, [models, pendingModelId]); // eslint-disable-line
 
-  // ── Pré-remplissage édition ───────────────────────────────
+  // ── Pré-remplissage édition / reset création ──────────────
   useEffect(() => {
     if (device) {
       reset({
@@ -165,11 +149,11 @@ export default function DeviceForm({
         notes:           device.notes ?? '',
         purchaseOrderId: device.purchaseOrderId ?? '',
       });
-      if (device.assignedUser) {
-        setAssignedUserDisplay(`${device.assignedUser.displayName} (${device.assignedUser.email})`);
-      } else {
-        setAssignedUserDisplay(undefined);
-      }
+      setAssignedUserDisplay(
+        device.assignedUser
+          ? `${device.assignedUser.displayName} (${device.assignedUser.email})`
+          : undefined
+      );
     } else {
       reset({
         keyboardLayout:  'AZERTY_FR',
@@ -180,17 +164,16 @@ export default function DeviceForm({
       setAssignedUserDisplay(undefined);
     }
     setSyncState('idle');
-  }, [device, isOpen, reset]);
+  }, [device, isOpen]); // eslint-disable-line
 
   // ── Auto-remplissage quand un modèle est sélectionné ─────
   const onModelChange = (modelId: string) => {
     const m = models.find((m) => m.id === modelId);
-    if (m) {
-      if (m.processor)  setValue('processor',  m.processor);
-      if (m.ram)        setValue('ram',        m.ram);
-      if (m.storage)    setValue('storage',    m.storage);
-      if (m.screenSize) setValue('screenSize', m.screenSize);
-    }
+    if (!m) return;
+    if (m.processor)  setValue('processor',  m.processor);
+    if (m.ram)        setValue('ram',        m.ram);
+    if (m.storage)    setValue('storage',    m.storage);
+    if (m.screenSize) setValue('screenSize', m.screenSize);
   };
 
   // ── Sync numéro de série ──────────────────────────────────
@@ -203,28 +186,22 @@ export default function DeviceForm({
       if (data.found && data.source === 'local') {
         setSyncState('duplicate');
         setSyncMessage(data.warning ?? 'Numéro de série déjà enregistré');
-
       } else if (data.found && data.source === 'intune') {
-        const d = data.data;
         setSyncState('found');
-        setSyncMessage(`Intune : ${d.model ?? ''}`);
-
+        setSyncMessage(`Intune : ${data.data?.model ?? ''}`);
       } else if (data.found && data.source === 'dell') {
         const d = data.data;
-        if (d.processor) setValue('processor',  d.processor);
-        if (d.ram)       setValue('ram',        d.ram);
-        if (d.storage)   setValue('storage',    d.storage);
+        if (d.processor)  setValue('processor',  d.processor);
+        if (d.ram)        setValue('ram',        d.ram);
+        if (d.storage)    setValue('storage',    d.storage);
         if (d.screenSize) setValue('screenSize', d.screenSize);
-
         if (d.catalogModelId && d.catalogModelType) {
-          const currentType = watch('type');
-          if (currentType !== d.catalogModelType) {
+          if (watch('type') !== d.catalogModelType) {
             setValue('type', d.catalogModelType);
             setValue('modelId', '');
           }
           setPendingModelId(d.catalogModelId);
         }
-
         const filledSpecs = [d.processor, d.ram, d.storage].filter(Boolean).length;
         setSyncState('found');
         setSyncMessage(
@@ -232,7 +209,6 @@ export default function DeviceForm({
             ? `Dell : ${d.model} — config auto-remplie`
             : `Dell : ${d.model} (modèle non trouvé dans le catalogue local)`
         );
-
       } else {
         setSyncState('notfound');
         setSyncMessage(data.hint ?? 'Non trouvé sur Dell ni dans Intune');
@@ -245,6 +221,11 @@ export default function DeviceForm({
 
   // ── Soumission ────────────────────────────────────────────
   const handleFormSubmit = (values: FormValues) => {
+    // Validation manuelle pour utilisateur requis
+    if (requireUser && !values.assignedUserId) {
+      setError('assignedUserId', { message: 'Utilisateur requis' });
+      return;
+    }
     const model = models.find((m) => m.id === values.modelId);
     onSubmit({
       assignedUserId:  values.assignedUserId || undefined,
@@ -286,7 +267,10 @@ export default function DeviceForm({
             {/* En-tête */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
               <h2 className="font-semibold text-[var(--text-primary)]">{title}</h2>
-              <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -308,11 +292,9 @@ export default function DeviceForm({
                           displayValue={assignedUserDisplay}
                           onChange={(userId, user) => {
                             field.onChange(userId);
-                            if (user) {
-                              setAssignedUserDisplay(`${user.displayName} (${user.email})`);
-                            } else {
-                              setAssignedUserDisplay(undefined);
-                            }
+                            setAssignedUserDisplay(
+                              user ? `${user.displayName} (${user.email})` : undefined
+                            );
                           }}
                         />
                       )}
@@ -411,7 +393,7 @@ export default function DeviceForm({
                           value={field.value ?? ''}
                           onChange={(v) => { field.onChange(v); onModelChange(v); }}
                           options={modelOptions}
-                          placeholder={selectedType ? (modelOptions.length ? 'Modèle…' : 'Aucun modèle') : 'Choisir un type d\'abord'}
+                          placeholder={selectedType ? (modelOptions.length ? 'Modèle…' : 'Aucun modèle') : "Choisir un type d'abord"}
                           disabled={!selectedType || modelOptions.length === 0}
                           error={!!errors.modelId}
                         />
@@ -431,7 +413,7 @@ export default function DeviceForm({
                     </Field>
 
                     <Field label="Taille écran">
-                      <input {...register('screenSize')} placeholder='Auto-rempli via modèle' className="input-glass py-2 text-sm" />
+                      <input {...register('screenSize')} placeholder="Auto-rempli via modèle" className="input-glass py-2 text-sm" />
                     </Field>
 
                     <Field label="Clavier" className="col-span-2">
@@ -446,24 +428,14 @@ export default function DeviceForm({
                   </div>
                 </section>
 
-                {/* ── N° commande (manager, édition seulement) ── */}
-                {isManager && isEdit && (
+                {/* ── N° commande (lecture seule) ── */}
+                {isEdit && device?.purchaseOrder?.reference && (
                   <section>
                     <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Commande</h3>
-                    <Field label="N° commande">
-                      <Controller control={control} name="purchaseOrderId" render={({ field }) => (
-                        <AppSelect
-                          value={field.value ?? ''}
-                          onChange={field.onChange}
-                          options={[{ value: '', label: 'Non lié à une commande' }, ...poOptions]}
-                          placeholder="Sélectionner une commande…"
-                          disabled={!!(device?.purchaseOrderId)}
-                        />
-                      )} />
-                      {device?.purchaseOrderId && (
-                        <p className="text-[10px] text-amber-400 mt-1">Commande verrouillée — non modifiable</p>
-                      )}
-                    </Field>
+                    <div className="flex items-center justify-between px-3 py-2 rounded-xl border border-[var(--border-glass)] bg-white/[0.02]">
+                      <span className="text-xs text-[var(--text-muted)]">N° commande</span>
+                      <span className="text-xs font-mono font-semibold text-primary">{device.purchaseOrder.reference}</span>
+                    </div>
                   </section>
                 )}
 

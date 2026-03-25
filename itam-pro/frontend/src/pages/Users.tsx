@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { Search, Laptop, Shield, Eye } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Laptop, Shield, Eye, UserX, Loader2, X } from 'lucide-react';
 import { userService } from '../services/user.service';
+import { useAuthStore } from '../stores/authStore';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { AppSelect } from '../components/ui/AppSelect';
 import { ROLE_LABELS } from '../utils/formatters';
-import type { Role } from '../types';
+import type { Role, User } from '../types';
+import api from '../services/api';
 
 const ROLE_COLORS: Record<Role, string> = {
   MANAGER:    'bg-indigo-500/15 text-indigo-400',
@@ -22,13 +24,26 @@ const ROLE_ICONS: Record<Role, React.ComponentType<{ size?: number }>> = {
 };
 
 export default function Users() {
-  const [search, setSearch] = useState('');
-  const [role, setRole]     = useState<Role | ''>('');
+  const [search,    setSearch]    = useState('');
+  const [role,      setRole]      = useState<Role | ''>('');
+  const [deactivating, setDeactivating] = useState<User | null>(null);
+
+  const { user: currentUser } = useAuthStore();
+  const isManager = currentUser?.role === 'MANAGER';
+  const qc = useQueryClient();
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users', search, role],
     queryFn:  () => userService.list({ search: search || undefined, role: role || undefined }),
     staleTime: 30_000,
+  });
+
+  const deactivateMut = useMutation({
+    mutationFn: (userId: string) => api.delete(`/users/${userId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      setDeactivating(null);
+    },
   });
 
   return (
@@ -98,16 +113,21 @@ export default function Users() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
               >
-                <GlassCard padding="md" hoverable>
+                <GlassCard padding="md" hoverable className={!u.isActive ? 'opacity-60' : undefined}>
                   <div className="flex items-start gap-3">
                     {/* Avatar */}
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${u.isActive ? 'bg-gradient-to-br from-indigo-400 to-cyan-400' : 'bg-red-500/30'}`}>
                       {u.displayName.charAt(0)}
                     </div>
 
                     {/* Infos */}
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{u.displayName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{u.displayName}</p>
+                        {!u.isActive && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[9px] font-semibold flex-shrink-0">Inactif</span>
+                        )}
+                      </div>
                       <p className="text-xs text-[var(--text-muted)] truncate">{u.email}</p>
                       {u.jobTitle && <p className="text-xs text-[var(--text-muted)] truncate">{u.jobTitle}</p>}
 
@@ -123,6 +143,18 @@ export default function Users() {
                         )}
                       </div>
                     </div>
+
+                    {/* Bouton désactivation (Manager uniquement, user actif) */}
+                    {isManager && u.isActive && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeactivating(u); }}
+                        className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0"
+                        aria-label="Désactiver le compte"
+                        title="Désactiver le compte"
+                      >
+                        <UserX size={14} />
+                      </button>
+                    )}
                   </div>
 
                   {/* Appareils assignés */}
@@ -138,6 +170,55 @@ export default function Users() {
           })}
         </div>
       )}
+      {/* ─── Modale confirmation désactivation ──────────────── */}
+      <AnimatePresence>
+        {deactivating && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-50 bg-black/60"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setDeactivating(null)}
+            />
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+            >
+              <div className="glass-card p-6 max-w-sm w-full space-y-4 pointer-events-auto">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                    <UserX size={20} className="text-red-400" />
+                  </div>
+                  <button onClick={() => setDeactivating(null)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                    <X size={16} />
+                  </button>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-[var(--text-primary)]">Désactiver {deactivating.displayName} ?</h3>
+                  <p className="text-sm text-[var(--text-muted)] mt-1">
+                    Le compte sera désactivé. Ses appareils restent visibles dans la page Utilisateurs jusqu'à récupération physique par un technicien.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeactivating(null)}
+                    className="btn-secondary flex-1 py-2 text-sm"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={() => deactivateMut.mutate(deactivating.id)}
+                    disabled={deactivateMut.isPending}
+                    className="flex-1 py-2 text-sm rounded-xl bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {deactivateMut.isPending && <Loader2 size={13} className="animate-spin" />}
+                    Désactiver
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
