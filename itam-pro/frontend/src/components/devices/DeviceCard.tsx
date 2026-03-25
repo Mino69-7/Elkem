@@ -44,14 +44,14 @@ export default function DeviceCard({ device, index, onEdit, onDelete }: DeviceCa
         <button
           onClick={() => onEdit(device)}
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors"
-          aria-label={`Modifier ${device.assetTag}`}
+          aria-label={`Modifier ${device.brand} ${device.model}`}
         >
           <Pencil size={13} />
         </button>
         <button
           onClick={() => onDelete(device)}
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-          aria-label={`Supprimer ${device.assetTag}`}
+          aria-label={`Supprimer ${device.brand} ${device.model}`}
         >
           <Trash2 size={13} />
         </button>
@@ -71,7 +71,7 @@ export default function DeviceCard({ device, index, onEdit, onDelete }: DeviceCa
         >
           {device.brand} {device.model}
         </Link>
-        <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">{device.assetTag}</p>
+        <p className="text-xs text-[var(--text-muted)] font-semibold mt-0.5">{device.site ?? '—'}</p>
         <p className="text-xs text-[var(--text-muted)] mt-0.5">{DEVICE_TYPE_LABELS[device.type]}</p>
       </div>
 

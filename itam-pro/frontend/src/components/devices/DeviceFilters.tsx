@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import * as Select from '@radix-ui/react-select';
-import { Search, X, ChevronDown, Check, Monitor, Tag, User, RotateCcw } from 'lucide-react';
+import { Search, X, ChevronDown, Check, Monitor, Tag, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { DEVICE_TYPE_LABELS, DEVICE_STATUS_LABELS } from '../../utils/formatters';
 import type { DeviceType, DeviceStatus } from '../../types';
 
-const DEVICE_TYPES = Object.keys(DEVICE_TYPE_LABELS) as DeviceType[];
-const DEVICE_STATUSES = (Object.keys(DEVICE_STATUS_LABELS) as DeviceStatus[]).filter(
-  (s) => s !== 'IN_STOCK' && s !== 'ORDERED'
-);
+// Utilisateurs page : uniquement les types poste de travail
+const WORKSTATION_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'OTHER'];
+// Utilisateurs page : uniquement les statuts visibles (Actif, Perdu, Volé)
+const USER_STATUSES: DeviceStatus[] = ['ASSIGNED', 'LOST', 'STOLEN'];
 
 // ─── Filter pill (Radix UI Select, zéro native select) ──────────────────────
 interface FilterPillProps {
@@ -128,7 +128,7 @@ export default function DeviceFilters({ externalSearch }: DeviceFiltersProps) {
     return () => clearTimeout(timer);
   }, [localSearch]); // eslint-disable-line
 
-  const hasActiveFilters = !!(filters.search || filters.type || filters.status || filters.assigned !== undefined);
+  const hasActiveFilters = !!(filters.search || filters.type || filters.status);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -165,7 +165,7 @@ export default function DeviceFilters({ externalSearch }: DeviceFiltersProps) {
         icon={<Monitor size={11} />}
         label="Type"
         value={filters.type}
-        options={DEVICE_TYPES.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] }))}
+        options={WORKSTATION_TYPES.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] }))}
         onChange={(v) => setFilters({ type: v as DeviceType | undefined, page: 1 })}
       />
 
@@ -173,19 +173,8 @@ export default function DeviceFilters({ externalSearch }: DeviceFiltersProps) {
         icon={<Tag size={11} />}
         label="Statut"
         value={filters.status}
-        options={DEVICE_STATUSES.map((s) => ({ value: s, label: DEVICE_STATUS_LABELS[s] }))}
+        options={USER_STATUSES.map((s) => ({ value: s, label: DEVICE_STATUS_LABELS[s] }))}
         onChange={(v) => setFilters({ status: v as DeviceStatus | undefined, page: 1 })}
-      />
-
-      <FilterPill
-        icon={<User size={11} />}
-        label="Assignation"
-        value={filters.assigned === undefined ? undefined : String(filters.assigned)}
-        options={[
-          { value: 'true',  label: 'Assignés' },
-          { value: 'false', label: 'Libres'   },
-        ]}
-        onChange={(v) => setFilters({ assigned: v === undefined ? undefined : v === 'true', page: 1 })}
       />
 
       {/* ── Reset ────────────────────────────────────── */}

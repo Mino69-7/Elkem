@@ -25,6 +25,7 @@ export interface DeviceFormData {
   invoiceNumber?: string;
   notes?: string;
   assignedUserId?: string;
+  purchaseOrderId?: string;
 }
 
 export const deviceService = {

@@ -6,7 +6,7 @@ import { logger } from '../lib/logger.js';
 // ─── Schémas de validation ────────────────────────────────────
 
 const deviceSchema = z.object({
-  assetTag:        z.string().regex(/^[A-Z0-9-]+$/, 'Format invalide (ex: ELKEM-LT-001)'),
+  assetTag:        z.string().regex(/^[A-Z0-9-]+$/, 'Format invalide (ex: ELKEM-LT-001)').optional().nullable(),
   serialNumber:    z.string().min(1, 'Numéro de série requis'),
   type:            z.enum(['LAPTOP','DESKTOP','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
   brand:           z.string().min(1, 'Marque requise'),
@@ -29,6 +29,7 @@ const deviceSchema = z.object({
   invoiceNumber:   z.string().optional(),
   notes:           z.string().optional(),
   assignedUserId:  z.string().optional(),
+  purchaseOrderId: z.string().optional(),
 });
 
 const updateSchema = deviceSchema.partial();
@@ -38,7 +39,7 @@ const updateSchema = deviceSchema.partial();
 export async function listDevices(req: Request, res: Response, next: NextFunction) {
   try {
     const {
-      search, type, status, assigned, excludeStock,
+      search, type, types, status, statuses, assigned, excludeStock, assignedUserId,
       page = '1', limit = '25',
       sortBy = 'updatedAt', sortOrder = 'desc',
     } = req.query as Record<string, string>;
@@ -62,16 +63,19 @@ export async function listDevices(req: Request, res: Response, next: NextFunctio
       ];
     }
     if (type)             where.type   = type;
-    if (status)           where.status = status;
+    else if (types)       where.type   = { in: types.split(',') };
+    if (status)                       where.status = status;
+    else if (statuses)                where.status = { in: statuses.split(',') };
     else if (excludeStock === 'true') where.status = { notIn: ['IN_STOCK', 'ORDERED'] };
-    if (assigned === 'true')  where.assignedUserId = { not: null };
-    if (assigned === 'false') where.assignedUserId = null;
+    if (assignedUserId)           where.assignedUserId = assignedUserId;
+    else if (assigned === 'true')  where.assignedUserId = { not: null };
+    else if (assigned === 'false') where.assignedUserId = null;
 
     const [data, total] = await Promise.all([
       prisma.device.findMany({
         where,
         include: {
-          assignedUser: { select: { id: true, displayName: true, email: true, avatar: true } },
+          assignedUser: { select: { id: true, displayName: true, email: true, avatar: true, isActive: true } },
         },
         orderBy: { [safeSortBy]: safeSortOrder },
         skip: (pageNum - 1) * limitNum,
@@ -93,7 +97,8 @@ export async function getDevice(req: Request, res: Response, next: NextFunction)
     const device = await prisma.device.findUnique({
       where: { id: req.params.id },
       include: {
-        assignedUser: { select: { id: true, displayName: true, email: true, avatar: true, role: true } },
+        assignedUser:   { select: { id: true, displayName: true, email: true, avatar: true, role: true } },
+        purchaseOrder:  { select: { id: true, reference: true } },
         auditLogs: {
           include: { user: { select: { id: true, displayName: true, email: true } } },
           orderBy: { createdAt: 'desc' },
@@ -160,12 +165,13 @@ export async function updateDevice(req: Request, res: Response, next: NextFuncti
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: 'Données invalides', details: parsed.error.flatten() });
 
-    const { purchaseDate, warrantyExpiry, assignedUserId, ...rest } = parsed.data;
+    const { purchaseDate, warrantyExpiry, assignedUserId, purchaseOrderId, ...rest } = parsed.data;
 
     let data: Record<string, unknown> = {
       ...rest,
-      purchaseDate:   purchaseDate   !== undefined ? new Date(purchaseDate)   : undefined,
-      warrantyExpiry: warrantyExpiry !== undefined ? new Date(warrantyExpiry) : undefined,
+      purchaseDate:    purchaseDate    !== undefined ? new Date(purchaseDate)    : undefined,
+      warrantyExpiry:  warrantyExpiry  !== undefined ? new Date(warrantyExpiry)  : undefined,
+      purchaseOrderId: purchaseOrderId !== undefined ? (purchaseOrderId || null) : undefined,
     };
 
     // Si l'appareil est lié à un PO, le modèle/marque/type sont verrouillés

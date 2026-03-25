@@ -21,7 +21,7 @@ export default function Devices() {
   const { user } = useAuthStore();
   const canEdit = user?.role === 'MANAGER' || user?.role === 'TECHNICIAN';
 
-  const { data, isLoading } = useDevices();
+  const { data, isLoading } = useDevices({ types: 'LAPTOP,DESKTOP,OTHER', statuses: 'ASSIGNED,LOST,STOLEN' });
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing,  setEditing]  = useState<Device | null>(null);
@@ -57,9 +57,9 @@ export default function Devices() {
       {/* ─── En-tête ─────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[var(--text-primary)]">Appareils</h1>
+          <h1 className="text-xl font-bold text-[var(--text-primary)]">Utilisateurs</h1>
           <p className="text-sm text-[var(--text-muted)] mt-0.5">
-            {isLoading ? '…' : `${total} appareil${total > 1 ? 's' : ''} en service`}
+            {isLoading ? '…' : `${total} utilisateur${total > 1 ? 's' : ''} en service`}
           </p>
         </div>
 
@@ -146,6 +146,9 @@ export default function Devices() {
           device={editing}
           isOpen={formOpen}
           isSaving={createMut.isPending || updateMut.isPending}
+          isManager={user?.role === 'MANAGER'}
+          requireUser={!editing}
+          formTitle={editing ? undefined : 'Nouvel utilisateur'}
           onClose={closeForm}
           onSubmit={handleSubmit}
         />

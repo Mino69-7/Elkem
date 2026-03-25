@@ -31,6 +31,7 @@ interface ModelStock {
   ram?: string;
   storage?: string;
   screenSize?: string;
+  order: number;
   inStock: number;
   ordered: number;
 }
@@ -59,7 +60,8 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
   const { data: modelStock = [], isLoading: loadingModels } = useQuery<ModelStock[]>({
     queryKey: ['stock-summary'],
     queryFn:  async () => { const { data } = await api.get('/devicemodels/stock-summary'); return data; },
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
   const { data: stockDevices, isLoading: loadingDevices } = useQuery<{ data: Device[]; total: number }>({
@@ -361,73 +363,91 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
             })
           ) : (
             /* ── Vue liste ───────────────────────────────────── */
-            <GlassCard padding="none">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border-glass)]">
-                      {['Modèle', 'Processeur', 'RAM', 'Stockage', 'En stock', 'Commandés'].map((h) => (
-                        <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(byType).flatMap(([type, models]) =>
-                      models.map((model, i) => {
-                        const Icon = TYPE_ICONS[type as DeviceType] ?? HelpCircle;
-                        const isEmpty = model.inStock === 0;
-                        return (
-                          <motion.tr
-                            key={model.id}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: i * 0.02 }}
-                            onClick={() => setSelectedModel(model)}
-                            className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <Icon size={13} className="text-[var(--text-muted)] flex-shrink-0" />
-                                <div>
-                                  <p className="text-sm font-medium text-[var(--text-primary)]">{model.name}</p>
-                                  <p className="text-[10px] text-[var(--text-muted)]">{model.brand}</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-[var(--text-muted)] max-w-[160px] truncate">
-                              {model.processor ?? '—'}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">
-                              {model.ram ?? '—'}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">
-                              {model.storage ?? '—'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
-                                isEmpty ? 'bg-amber-400/15 text-amber-400' : 'bg-emerald-400/15 text-emerald-400'
-                              }`}>
-                                {isEmpty ? <AlertTriangle size={10} /> : <CheckCircle size={10} />}
-                                {model.inStock}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              {model.ordered > 0 ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-400/15 text-indigo-400">
-                                  +{model.ordered}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-[var(--text-muted)]">—</span>
-                              )}
-                            </td>
-                          </motion.tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </GlassCard>
+            <div className="space-y-4">
+              {Object.entries(byType).map(([type, models]) => {
+                const Icon = TYPE_ICONS[type as DeviceType] ?? HelpCircle;
+                const typeTotal = models.reduce((s, m) => s + m.inStock, 0);
+                return (
+                  <div key={type}>
+                    {/* En-tête de catégorie */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Icon size={14} className="text-[var(--text-muted)]" />
+                      <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
+                        {DEVICE_TYPE_LABELS[type]}
+                      </h2>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        — {typeTotal} disponible{typeTotal !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    <GlassCard padding="none">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-[var(--border-glass)]">
+                              {['Modèle', 'Processeur', 'RAM', 'Stockage', 'En stock', 'Commandés'].map((h) => (
+                                <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {models.map((model, i) => {
+                              const isEmpty = model.inStock === 0;
+                              return (
+                                <motion.tr
+                                  key={model.id}
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: i * 0.02 }}
+                                  onClick={() => setSelectedModel(model)}
+                                  className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
+                                >
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <Icon size={13} className="text-[var(--text-muted)] flex-shrink-0" />
+                                      <div>
+                                        <p className="text-sm font-medium text-[var(--text-primary)]">{model.name}</p>
+                                        <p className="text-[10px] text-[var(--text-muted)]">{model.brand}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-[var(--text-muted)] max-w-[160px] truncate">
+                                    {model.processor ?? '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">
+                                    {model.ram ?? '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">
+                                    {model.storage ?? '—'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                                      isEmpty ? 'bg-amber-400/15 text-amber-400' : 'bg-emerald-400/15 text-emerald-400'
+                                    }`}>
+                                      {isEmpty ? <AlertTriangle size={10} /> : <CheckCircle size={10} />}
+                                      {model.inStock}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {model.ordered > 0 ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-400/15 text-indigo-400">
+                                        +{model.ordered}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-[var(--text-muted)]">—</span>
+                                    )}
+                                  </td>
+                                </motion.tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </GlassCard>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}

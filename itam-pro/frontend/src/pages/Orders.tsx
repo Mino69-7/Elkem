@@ -7,7 +7,7 @@ import {
   ShoppingCart, Plus, Lock, CheckCircle, Clock, AlertTriangle,
   X, Save, Package, Bell, Pencil, Trash2, History, User,
   Laptop, Monitor, Smartphone, Tablet, Printer,
-  Keyboard, Mouse, Headphones, Layers, HelpCircle,
+  Keyboard, Mouse, Headphones, Layers, HelpCircle, GripVertical,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { GlassCard } from '../components/ui/GlassCard';
@@ -577,12 +577,26 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
   const [modelForm,      setModelForm]      = useState<ModelFormState>(emptyModel);
   const [showModelForm,  setShowModelForm]  = useState(false);
 
+  // Drag state
+  const [localModels, setLocalModels] = useState<DeviceModel[]>([]);
+  const [draggingId,  setDraggingId]  = useState<string | null>(null); // visuel uniquement
+  const [dragOverId,  setDragOverId]  = useState<string | null>(null);
+  // Ref pour lire l'id source sans stale closure dans handleDrop
+  const draggingIdRef = useRef<string | null>(null);
+
   const { data: deviceModels = [], isLoading } = useQuery<DeviceModel[]>({
     queryKey: ['device-models-all'],
     queryFn:  () => api.get<DeviceModel[]>('/devicemodels/all').then((r) => r.data),
     enabled:  isManager,
-    staleTime: 30_000,
+    staleTime: 0,           // toujours frais à chaque montage du composant
+    refetchOnMount: true,
   });
+
+  // Sync simple : quand les données serveur changent, on reflète dans le state local
+  // (fonctionne aussi avec React StrictMode qui exécute les effets deux fois)
+  useEffect(() => {
+    setLocalModels(deviceModels);
+  }, [deviceModels]);
 
   const modelsApi = {
     create: (d: Partial<DeviceModel>) => api.post<DeviceModel>('/devicemodels', d).then((r) => r.data),
@@ -601,6 +615,18 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
   const toggleModelMut = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => modelsApi.toggle(id, isActive),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['device-models-all'] }),
+  });
+  const reorderMut = useMutation({
+    mutationFn: (items: { id: string; order: number }[]) => api.patch('/devicemodels/reorder', { items }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['device-models-all'] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+    },
+    onError: (err) => {
+      // Revert optimistic update en cas d'erreur
+      setLocalModels(deviceModels);
+      console.error('[reorder] Erreur sauvegarde ordre :', err);
+    },
   });
 
   const resetModelForm = () => { setEditingModel(null); setModelForm(emptyModel); setShowModelForm(false); };
@@ -627,7 +653,61 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
     else createModelMut.mutate(payload);
   };
 
-  const modelsByType = deviceModels.reduce<Record<string, DeviceModel[]>>((acc, m) => {
+  // ── Drag handlers ──────────────────────────────────────────
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    draggingIdRef.current = id;          // ref = pas de stale closure
+    setDraggingId(id);                   // state = pour les classes CSS
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (id !== draggingIdRef.current) setDragOverId(id);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string, type: string) => {
+    e.preventDefault();
+    const fromId = draggingIdRef.current; // lecture via ref : toujours à jour
+    // Réinitialise immédiatement les indicateurs visuels
+    draggingIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+
+    if (!fromId || fromId === targetId) return;
+
+    const typeModels = localModels.filter((m) => m.type === type);
+    const fromIdx = typeModels.findIndex((m) => m.id === fromId);
+    const toIdx   = typeModels.findIndex((m) => m.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    // Réordonne le groupe du type concerné
+    const reordered = [...typeModels];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    // Remplace les éléments du type à leurs positions dans le tableau global
+    const updated = [...localModels];
+    const typeIndices = updated.reduce<number[]>((acc, m, i) => {
+      if (m.type === type) acc.push(i);
+      return acc;
+    }, []);
+    reordered.forEach((m, j) => { updated[typeIndices[j]] = { ...m, order: j }; });
+
+    // Mise à jour optimiste immédiate (visible avant la réponse serveur)
+    setLocalModels(updated);
+
+    // Sauvegarde en base — onSuccess invalide les queries → refetch → sync confirmée
+    reorderMut.mutate(reordered.map((m, idx) => ({ id: m.id, order: idx })));
+  };
+
+  const handleDragEnd = () => {
+    draggingIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+  };
+
+  const modelsByType = localModels.reduce<Record<string, DeviceModel[]>>((acc, m) => {
     (acc[m.type] = acc[m.type] ?? []).push(m);
     return acc;
   }, {});
@@ -711,7 +791,7 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
             <div key={i} className="px-4 py-3"><Skeleton className="h-4 w-48" /></div>
           ))}
         </GlassCard>
-      ) : deviceModels.length === 0 ? (
+      ) : localModels.length === 0 ? (
         <GlassCard padding="md" className="text-center py-12">
           <p className="text-sm text-[var(--text-muted)]">Aucun modèle configuré</p>
         </GlassCard>
@@ -728,7 +808,27 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                   </p>
                 </div>
                 {models.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border-glass)] hover:bg-white/[0.02] transition-colors">
+                  <div
+                    key={m.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, m.id)}
+                    onDragOver={(e) => handleDragOver(e, m.id)}
+                    onDrop={(e) => handleDrop(e, m.id, type)}
+                    onDragEnd={handleDragEnd}
+                    className={clsx(
+                      'flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border-glass)] transition-colors select-none',
+                      draggingId === m.id
+                        ? 'opacity-40 bg-primary/5'
+                        : dragOverId === m.id
+                          ? 'border-t-2 border-t-primary/60 bg-primary/[0.04]'
+                          : 'hover:bg-white/[0.02]'
+                    )}
+                  >
+                    {/* Poignée drag */}
+                    <GripVertical
+                      size={14}
+                      className="text-[var(--text-muted)] cursor-grab active:cursor-grabbing flex-shrink-0 opacity-40 hover:opacity-80 transition-opacity"
+                    />
                     <div className="flex-1 min-w-0">
                       <p className={clsx('text-sm font-medium', m.isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)] line-through')}>{m.name}</p>
                       <p className="text-[10px] text-[var(--text-muted)] truncate">

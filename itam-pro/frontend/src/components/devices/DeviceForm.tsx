@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 import { AppSelect } from '../ui/AppSelect';
 import { UserCombobox } from '../ui/UserCombobox';
-import type { Device, DeviceModel, DeviceType } from '../../types';
+import type { Device, DeviceModel, PurchaseOrder } from '../../types';
 import type { DeviceFormData } from '../../services/device.service';
 import { KEYBOARD_LAYOUT_LABELS, ELKEM_SITES, DEVICE_TYPE_LABELS } from '../../utils/formatters';
 import api from '../../services/api';
@@ -29,40 +29,23 @@ const STATUS_OPTIONS = [
 ];
 
 const TYPE_OPTIONS = Object.entries(DEVICE_TYPE_LABELS).map(([value, label]) => ({ value, label }));
-const SITE_OPTIONS = ELKEM_SITES.map((s) => ({ value: s, label: s }));
+const SITE_OPTIONS = ELKEM_SITES.map((s) => ({ value: s.code, label: s.label }));
 const KEYBOARD_OPTIONS = KEYBOARD_FORM_OPTIONS.map((k) => ({
   value: k,
   label: KEYBOARD_LAYOUT_LABELS[k] ?? k,
 }));
 
-// ─── Schéma Zod ───────────────────────────────────────────────
-
-const schema = z.object({
-  assetTag:       z.string().min(1, 'Requis').regex(/^[A-Z0-9-]+$/, 'Majuscules, chiffres et tirets uniquement'),
-  serialNumber:   z.string().min(1, 'Requis'),
-  type:           z.string().min(1, 'Requis'),
-  modelId:        z.string().min(1, 'Requis'),
-  processor:      z.string().optional(),
-  ram:            z.string().optional(),
-  storage:        z.string().optional(),
-  screenSize:     z.string().optional(),
-  keyboardLayout: z.string().default('AZERTY_FR'),
-  status:         z.string().default('IN_STOCK'),
-  site:           z.string().default('Saint-Fons SUD'),
-  notes:          z.string().optional(),
-  assignedUserId: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof schema>;
-
 // ─── Props ────────────────────────────────────────────────────
 
 interface DeviceFormProps {
-  device?:  Device | null;
-  isOpen:   boolean;
-  isSaving: boolean;
-  onClose:  () => void;
-  onSubmit: (data: DeviceFormData) => void;
+  device?:     Device | null;
+  isOpen:      boolean;
+  isSaving:    boolean;
+  isManager?:  boolean;
+  requireUser?: boolean;   // Utilisateurs page : assignedUser obligatoire
+  formTitle?:  string;     // Override titre (ex: "Nouvel utilisateur")
+  onClose:     () => void;
+  onSubmit:    (data: DeviceFormData) => void;
 }
 
 // ─── Champ de formulaire ──────────────────────────────────────
@@ -83,7 +66,9 @@ function Field({ label, error, required, className, children }: {
 
 // ─── Composant principal ──────────────────────────────────────
 
-export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit }: DeviceFormProps) {
+export default function DeviceForm({
+  device, isOpen, isSaving, isManager, requireUser, formTitle, onClose, onSubmit,
+}: DeviceFormProps) {
   const isEdit = !!device;
 
   const [syncState, setSyncState] = useState<'idle' | 'loading' | 'found' | 'notfound' | 'duplicate'>('idle');
@@ -91,9 +76,36 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
   const [assignedUserDisplay, setAssignedUserDisplay] = useState<string | undefined>(undefined);
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
 
+  // ── Schéma dynamique (assignedUserId obligatoire si requireUser) ──
+  const schema = useMemo(() => z.object({
+    assignedUserId: requireUser
+      ? z.string().min(1, 'Utilisateur requis')
+      : z.string().optional(),
+    assetTag:       z.string().min(1, 'Requis').regex(/^[A-Z0-9-]+$/, 'Majuscules, chiffres et tirets uniquement'),
+    serialNumber:   z.string().min(1, 'Requis'),
+    site:           z.string().default('SUD'),
+    status:         z.string().default(requireUser ? 'ASSIGNED' : 'IN_STOCK'),
+    type:           z.string().min(1, 'Requis'),
+    modelId:        z.string().min(1, 'Requis'),
+    processor:      z.string().optional(),
+    ram:            z.string().optional(),
+    storage:        z.string().optional(),
+    screenSize:     z.string().optional(),
+    keyboardLayout: z.string().default('AZERTY_FR'),
+    notes:          z.string().optional(),
+    purchaseOrderId: z.string().optional(),
+  }), [requireUser]);
+
+  type FormValues = z.infer<typeof schema>;
+
   const { control, register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { keyboardLayout: 'AZERTY_FR', status: 'IN_STOCK', site: 'Saint-Fons SUD' },
+    defaultValues: {
+      keyboardLayout:  'AZERTY_FR',
+      status:          requireUser ? 'ASSIGNED' : 'IN_STOCK',
+      site:            'SUD',
+      assignedUserId:  '',
+    },
   });
 
   const selectedType   = watch('type');
@@ -110,6 +122,19 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
     enabled:  isOpen,
   });
 
+  // ── Chargement des commandes (manager en mode édition) ────
+  const { data: purchaseOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase-orders-all'],
+    queryFn:  () => api.get('/orders/history').then((r) => r.data),
+    enabled:  isOpen && !!isManager && isEdit,
+    staleTime: 60_000,
+  });
+
+  const poOptions = purchaseOrders.map((po) => ({
+    value: po.id,
+    label: `${po.reference} — ${po.deviceModel?.name ?? ''}`,
+  }));
+
   const modelOptions = models.map((m) => ({ value: m.id, label: m.name }));
 
   // ── Applique le modèle après rechargement de la liste ────
@@ -125,28 +150,33 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
   useEffect(() => {
     if (device) {
       reset({
-        assetTag:       device.assetTag,
-        serialNumber:   device.serialNumber,
-        type:           device.type,
-        modelId:        '',
-        processor:      device.processor ?? '',
-        ram:            device.ram ?? '',
-        storage:        device.storage ?? '',
-        screenSize:     device.screenSize ?? '',
-        keyboardLayout: device.keyboardLayout ?? 'AZERTY_FR',
-        status:         device.status ?? 'IN_STOCK',
-        site:           device.site ?? 'Saint-Fons SUD',
-        notes:          device.notes ?? '',
-        assignedUserId: device.assignedUserId ?? '',
+        assignedUserId:  device.assignedUserId ?? '',
+        assetTag:        device.assetTag ?? '',
+        serialNumber:    device.serialNumber,
+        site:            device.site ?? 'SUD',
+        status:          device.status ?? 'IN_STOCK',
+        type:            device.type,
+        modelId:         '',
+        processor:       device.processor ?? '',
+        ram:             device.ram ?? '',
+        storage:         device.storage ?? '',
+        screenSize:      device.screenSize ?? '',
+        keyboardLayout:  device.keyboardLayout ?? 'AZERTY_FR',
+        notes:           device.notes ?? '',
+        purchaseOrderId: device.purchaseOrderId ?? '',
       });
-      // Prépare l'affichage du combobox si un utilisateur est assigné
       if (device.assignedUser) {
         setAssignedUserDisplay(`${device.assignedUser.displayName} (${device.assignedUser.email})`);
       } else {
         setAssignedUserDisplay(undefined);
       }
     } else {
-      reset({ keyboardLayout: 'AZERTY_FR', status: 'IN_STOCK', site: 'Saint-Fons SUD' });
+      reset({
+        keyboardLayout:  'AZERTY_FR',
+        status:          requireUser ? 'ASSIGNED' : 'IN_STOCK',
+        site:            'SUD',
+        assignedUserId:  '',
+      });
       setAssignedUserDisplay(undefined);
     }
     setSyncState('idle');
@@ -181,20 +211,17 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
 
       } else if (data.found && data.source === 'dell') {
         const d = data.data;
-        // Auto-remplissage specs
         if (d.processor) setValue('processor',  d.processor);
         if (d.ram)       setValue('ram',        d.ram);
         if (d.storage)   setValue('storage',    d.storage);
         if (d.screenSize) setValue('screenSize', d.screenSize);
 
-        // Auto-sélection type + modèle du catalogue si trouvé
         if (d.catalogModelId && d.catalogModelType) {
           const currentType = watch('type');
           if (currentType !== d.catalogModelType) {
             setValue('type', d.catalogModelType);
             setValue('modelId', '');
           }
-          // Le modèle sera appliqué dès que la liste se recharge (via useEffect)
           setPendingModelId(d.catalogModelId);
         }
 
@@ -220,22 +247,25 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
   const handleFormSubmit = (values: FormValues) => {
     const model = models.find((m) => m.id === values.modelId);
     onSubmit({
-      assetTag:       values.assetTag,
-      serialNumber:   values.serialNumber,
-      type:           values.type,
-      brand:          model?.brand ?? 'Dell',
-      model:          model?.name ?? '',
-      processor:      values.processor,
-      ram:            values.ram,
-      storage:        values.storage,
-      screenSize:     values.screenSize,
-      keyboardLayout: values.keyboardLayout,
-      status:         values.status,
-      site:           values.site,
-      notes:          values.notes,
-      assignedUserId: values.assignedUserId || undefined,
+      assignedUserId:  values.assignedUserId || undefined,
+      assetTag:        values.assetTag,
+      serialNumber:    values.serialNumber,
+      site:            values.site,
+      status:          values.status,
+      type:            values.type,
+      brand:           model?.brand ?? 'Dell',
+      model:           model?.name ?? '',
+      processor:       values.processor,
+      ram:             values.ram,
+      storage:         values.storage,
+      screenSize:      values.screenSize,
+      keyboardLayout:  values.keyboardLayout,
+      notes:           values.notes,
+      purchaseOrderId: values.purchaseOrderId || undefined,
     } as DeviceFormData);
   };
+
+  const title = formTitle ?? (isEdit ? `Modifier ${device?.assetTag ?? device?.serialNumber}` : 'Nouvel appareil');
 
   return (
     <AnimatePresence>
@@ -255,9 +285,7 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
           >
             {/* En-tête */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
-              <h2 className="font-semibold text-[var(--text-primary)]">
-                {isEdit ? `Modifier ${device?.assetTag}` : 'Nouvel appareil'}
-              </h2>
+              <h2 className="font-semibold text-[var(--text-primary)]">{title}</h2>
               <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
                 <X size={16} />
               </button>
@@ -266,6 +294,31 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
             {/* Formulaire */}
             <form onSubmit={handleSubmit(handleFormSubmit)} className="flex-1 overflow-y-auto">
               <div className="p-5 space-y-5">
+
+                {/* ── Utilisateur ── */}
+                <section>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Utilisateur</h3>
+                  <Field label="Utilisateur assigné" error={errors.assignedUserId?.message} required={requireUser}>
+                    <Controller
+                      control={control}
+                      name="assignedUserId"
+                      render={({ field }) => (
+                        <UserCombobox
+                          value={field.value ?? ''}
+                          displayValue={assignedUserDisplay}
+                          onChange={(userId, user) => {
+                            field.onChange(userId);
+                            if (user) {
+                              setAssignedUserDisplay(`${user.displayName} (${user.email})`);
+                            } else {
+                              setAssignedUserDisplay(undefined);
+                            }
+                          }}
+                        />
+                      )}
+                    />
+                  </Field>
+                </section>
 
                 {/* ── Identification ── */}
                 <section>
@@ -311,26 +364,26 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
                       )}
                     </Field>
 
-                    {/* Utilisateur assigné */}
-                    <Field label="Utilisateur assigné" className="col-span-2">
-                      <Controller
-                        control={control}
-                        name="assignedUserId"
-                        render={({ field }) => (
-                          <UserCombobox
-                            value={field.value ?? ''}
-                            displayValue={assignedUserDisplay}
-                            onChange={(userId, user) => {
-                              field.onChange(userId);
-                              if (user) {
-                                setAssignedUserDisplay(`${user.displayName} (${user.email})`);
-                              } else {
-                                setAssignedUserDisplay(undefined);
-                              }
-                            }}
-                          />
-                        )}
-                      />
+                    <Field label="Site" error={errors.site?.message} required>
+                      <Controller control={control} name="site" render={({ field }) => (
+                        <AppSelect
+                          value={field.value ?? 'SUD'}
+                          onChange={field.onChange}
+                          options={SITE_OPTIONS}
+                          error={!!errors.site}
+                        />
+                      )} />
+                    </Field>
+
+                    <Field label="Statut" error={errors.status?.message} required>
+                      <Controller control={control} name="status" render={({ field }) => (
+                        <AppSelect
+                          value={field.value ?? 'IN_STOCK'}
+                          onChange={field.onChange}
+                          options={STATUS_OPTIONS}
+                          error={!!errors.status}
+                        />
+                      )} />
                     </Field>
                   </div>
                 </section>
@@ -393,34 +446,26 @@ export default function DeviceForm({ device, isOpen, isSaving, onClose, onSubmit
                   </div>
                 </section>
 
-                {/* ── Statut & Localisation ── */}
-                <section>
-                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Statut & Localisation</h3>
-                  <div className="grid grid-cols-2 gap-3">
-
-                    <Field label="Statut" error={errors.status?.message} required>
-                      <Controller control={control} name="status" render={({ field }) => (
+                {/* ── N° commande (manager, édition seulement) ── */}
+                {isManager && isEdit && (
+                  <section>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Commande</h3>
+                    <Field label="N° commande">
+                      <Controller control={control} name="purchaseOrderId" render={({ field }) => (
                         <AppSelect
-                          value={field.value ?? 'IN_STOCK'}
+                          value={field.value ?? ''}
                           onChange={field.onChange}
-                          options={STATUS_OPTIONS}
-                          error={!!errors.status}
+                          options={[{ value: '', label: 'Non lié à une commande' }, ...poOptions]}
+                          placeholder="Sélectionner une commande…"
+                          disabled={!!(device?.purchaseOrderId)}
                         />
                       )} />
+                      {device?.purchaseOrderId && (
+                        <p className="text-[10px] text-amber-400 mt-1">Commande verrouillée — non modifiable</p>
+                      )}
                     </Field>
-
-                    <Field label="Site" error={errors.site?.message} required>
-                      <Controller control={control} name="site" render={({ field }) => (
-                        <AppSelect
-                          value={field.value ?? 'Saint-Fons SUD'}
-                          onChange={field.onChange}
-                          options={SITE_OPTIONS}
-                          error={!!errors.site}
-                        />
-                      )} />
-                    </Field>
-                  </div>
-                </section>
+                  </section>
+                )}
 
                 {/* ── Notes ── */}
                 <section>

@@ -108,7 +108,7 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
       <table className="w-full text-sm" aria-label="Liste des appareils">
         <thead>
           <tr className="border-b border-[var(--border-glass)]">
-            <th className="px-4 py-3 text-left"><SortHeader field="assetTag" label="Tag" /></th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)]">Site</th>
             <th className="px-4 py-3 text-left"><SortHeader field="brand"    label="Appareil" /></th>
             <th className="px-4 py-3 text-left"><SortHeader field="type"     label="Type" /></th>
             <th className="px-4 py-3 text-left"><SortHeader field="status"   label="Statut" /></th>
@@ -128,14 +128,14 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                 transition={{ delay: i * 0.02 }}
                 className="border-b border-[var(--border-glass)] hover:bg-white/[0.03] transition-colors group"
               >
-                {/* Tag */}
-                <td className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">
+                {/* Site */}
+                <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
                   <Link
                     to={`/devices/${device.id}`}
                     state={{ from: '/devices' }}
-                    className="hover:text-primary transition-colors font-medium"
+                    className="hover:text-primary transition-colors font-semibold tracking-wide"
                   >
-                    {device.assetTag}
+                    {device.site ?? '—'}
                   </Link>
                 </td>
 
@@ -164,13 +164,16 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                 <td className="px-4 py-3 hidden md:table-cell">
                   {device.assignedUser ? (
                     <span className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${device.assignedUser.isActive === false ? 'bg-red-500/30' : 'bg-gradient-to-br from-indigo-400 to-cyan-400'}`}>
                         {device.assignedUser.displayName.charAt(0)}
                       </div>
-                      <span className="text-[var(--text-secondary)] text-xs truncate max-w-[120px]">
+                      <span className={`text-xs truncate max-w-[120px] ${device.assignedUser.isActive === false ? 'text-red-400' : 'text-[var(--text-secondary)]'}`}>
                         {device.assignedUser.displayName}
                       </span>
-                      {device.assignedUserId && doublonUserIds.has(device.assignedUserId) && ['ASSIGNED', 'PENDING_RETURN', 'LOANER'].includes(device.status) && (
+                      {device.assignedUser.isActive === false && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[9px] font-semibold">Inactif</span>
+                      )}
+                      {device.assignedUser.isActive !== false && device.assignedUserId && doublonUserIds.has(device.assignedUserId) && ['ASSIGNED', 'PENDING_RETURN', 'LOANER'].includes(device.status) && (
                         <Tooltip.Provider delayDuration={200}>
                           <Tooltip.Root>
                             <Tooltip.Trigger asChild>
@@ -212,14 +215,14 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                     <button
                       onClick={() => onEdit(device)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors"
-                      aria-label={`Modifier ${device.assetTag}`}
+                      aria-label={`Modifier ${device.brand} ${device.model}`}
                     >
                       <Pencil size={13} />
                     </button>
                     <button
                       onClick={() => onDelete(device)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                      aria-label={`Supprimer ${device.assetTag}`}
+                      aria-label={`Supprimer ${device.brand} ${device.model}`}
                     >
                       <Trash2 size={13} />
                     </button>

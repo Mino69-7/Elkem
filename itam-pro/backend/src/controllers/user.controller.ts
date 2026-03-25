@@ -71,3 +71,22 @@ export async function getUser(req: Request, res: Response, next: NextFunction) {
     next(err);
   }
 }
+
+// ─── Désactiver un utilisateur (soft delete) ──────────────────
+
+export async function deactivateUser(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    // Soft delete : passe isActive à false. Les appareils restent assignés.
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data:  { isActive: false },
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+}

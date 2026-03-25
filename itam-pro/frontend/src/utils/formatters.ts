@@ -83,20 +83,18 @@ export const KEYBOARD_LAYOUT_LABELS: Record<string, string> = {
 
 /** Sites Elkem */
 export const ELKEM_SITES = [
-  'Saint-Fons SUD',
-  'Saint-Fons NORD',
-  'ATRiON',
-  'ROUSSILLON',
-  'SALAISE',
-  'ITALIE',
-  'ESPAGNE',
-  'ALLEMAGNE',
-  'TURQUIE',
-  'RUSSIE',
-  'SLOVENIE',
+  { code: 'SUD',    label: 'SUD — Saint-Fons'  },
+  { code: 'NORD',   label: 'NORD — Saint-Fons' },
+  { code: 'ATRiON', label: 'ATRiON'            },
+  { code: 'ROU',    label: 'ROU — Roussillon'  },
+  { code: 'SSS',    label: 'SSS — Salaise'     },
+  { code: 'GLD',    label: 'GLD — KORNER'      },
+  { code: 'CAR',    label: 'CAR — Italie'      },
+  { code: 'SPA',    label: 'SPA — Espagne'     },
+  { code: 'LEV',    label: 'LEV — Allemagne'   },
 ] as const;
 
-export type ElkemSite = typeof ELKEM_SITES[number];
+export type ElkemSite = typeof ELKEM_SITES[number]['code'];
 
 /** Labels rôles */
 export const ROLE_LABELS: Record<string, string> = {

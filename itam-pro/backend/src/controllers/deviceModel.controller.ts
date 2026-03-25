@@ -86,3 +86,11 @@ export async function deleteModel(req: Request, res: Response, next: NextFunctio
     res.status(204).send();
   } catch (err) { next(err); }
 }
+
+export async function reorderModels(req: Request, res: Response, next: NextFunction) {
+  try {
+    const items = z.array(z.object({ id: z.string(), order: z.number().int() })).parse(req.body.items);
+    await Promise.all(items.map(({ id, order }) => prisma.deviceModel.update({ where: { id }, data: { order } })));
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+}

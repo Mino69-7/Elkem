@@ -187,10 +187,13 @@ export interface ApiError {
 export interface DeviceFilters {
   search?: string;
   type?: DeviceType;
+  types?: string;        // comma-separated list, e.g. 'LAPTOP,DESKTOP,OTHER'
+  statuses?: string;     // comma-separated list, e.g. 'ASSIGNED,LOST,STOLEN'
   status?: DeviceStatus;
   location?: string;
   assigned?: boolean;
   excludeStock?: boolean;
+  assignedUserId?: string;
   page?: number;
   limit?: number;
   sortBy?: string;

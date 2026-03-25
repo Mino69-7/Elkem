@@ -4,11 +4,12 @@ import { useDeviceStore } from '../stores/deviceStore';
 
 // ─── Liste paginée ────────────────────────────────────────────
 
-export function useDevices() {
+export function useDevices(extraFilters?: Partial<import('../types').DeviceFilters>) {
   const filters = useDeviceStore((s) => s.filters);
+  const merged  = extraFilters ? { ...filters, ...extraFilters } : filters;
   return useQuery({
-    queryKey: ['devices', filters],
-    queryFn:  () => deviceService.list(filters),
+    queryKey: ['devices', merged],
+    queryFn:  () => deviceService.list(merged),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   });

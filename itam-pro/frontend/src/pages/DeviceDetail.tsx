@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo, type ElementType } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Pencil, Trash2, UserRound, UserPlus, UserMinus,
   Loader2, AlertTriangle, CheckCircle, XCircle, Clock,
+  Laptop, Monitor, Cpu, Tv, Layers, Headphones, Keyboard, Mouse, Smartphone, Tablet,
+  Plus, X,
 } from 'lucide-react';
 import { useDevice, useUpdateDevice, useDeleteDevice, useAssignDevice, useUnassignDevice } from '../hooks/useDevices';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../services/user.service';
 import { useAuthStore } from '../stores/authStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
@@ -20,6 +22,8 @@ import {
   DEVICE_TYPE_LABELS, DEVICE_CONDITION_LABELS, KEYBOARD_LAYOUT_LABELS, AUDIT_ACTION_LABELS,
 } from '../utils/formatters';
 import type { DeviceFormData } from '../services/device.service';
+import type { Device, DeviceType, DeviceModel } from '../types';
+import api from '../services/api';
 
 // ─── Champ info ───────────────────────────────────────────────
 
@@ -28,6 +32,393 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
     <div className="flex justify-between gap-4 py-2 border-b border-[var(--border-glass)] last:border-0">
       <span className="text-xs text-[var(--text-muted)] flex-shrink-0">{label}</span>
       <span className="text-xs text-[var(--text-secondary)] text-right">{value ?? '—'}</span>
+    </div>
+  );
+}
+
+// ─── Config équipements ───────────────────────────────────────
+
+interface EquipCategory {
+  type: DeviceType;
+  label: string;
+  Icon: ElementType;
+  color: string;
+  bg: string;
+  section: 'workstation' | 'peripheral';
+}
+
+const EQUIP_CATEGORIES: EquipCategory[] = [
+  { type: 'LAPTOP',          label: 'Ordinateur portable', Icon: Laptop,     color: 'text-blue-400',    bg: 'bg-blue-500/15',    section: 'workstation' },
+  { type: 'DESKTOP',         label: 'Ordinateur fixe',     Icon: Cpu,        color: 'text-purple-400',  bg: 'bg-purple-500/15',  section: 'workstation' },
+  { type: 'OTHER',           label: 'Client léger',        Icon: Tv,         color: 'text-cyan-400',    bg: 'bg-cyan-500/15',    section: 'workstation' },
+  { type: 'MONITOR',         label: 'Écran',               Icon: Monitor,    color: 'text-emerald-400', bg: 'bg-emerald-500/15', section: 'peripheral'  },
+  { type: 'DOCKING_STATION', label: "Station d'accueil",   Icon: Layers,     color: 'text-orange-400',  bg: 'bg-orange-500/15',  section: 'peripheral'  },
+  { type: 'HEADSET',         label: 'Casque audio',        Icon: Headphones, color: 'text-pink-400',    bg: 'bg-pink-500/15',    section: 'peripheral'  },
+  { type: 'KEYBOARD',        label: 'Clavier',             Icon: Keyboard,   color: 'text-yellow-400',  bg: 'bg-yellow-500/15',  section: 'peripheral'  },
+  { type: 'MOUSE',           label: 'Souris',              Icon: Mouse,      color: 'text-red-400',     bg: 'bg-red-500/15',     section: 'peripheral'  },
+  { type: 'SMARTPHONE',      label: 'Smartphone',          Icon: Smartphone, color: 'text-indigo-400',  bg: 'bg-indigo-500/15',  section: 'peripheral'  },
+  { type: 'TABLET',          label: 'Tablette',            Icon: Tablet,     color: 'text-teal-400',    bg: 'bg-teal-500/15',    section: 'peripheral'  },
+];
+
+// ─── Mode d'ajout par type ────────────────────────────────────
+
+type AddMode = 'detailed' | 'quantity' | 'instant' | 'toggle';
+
+function getAddMode(type: DeviceType): AddMode {
+  if (type === 'DOCKING_STATION') return 'toggle';
+  if (type === 'MONITOR')         return 'quantity';
+  if (type === 'HEADSET' || type === 'KEYBOARD' || type === 'MOUSE') return 'instant';
+  return 'detailed'; // LAPTOP, DESKTOP, OTHER, SMARTPHONE, TABLET
+}
+
+// ─── Formulaire ajout rapide ──────────────────────────────────
+
+function QuickAddForm({
+  type, assignedUserId, allModels, onSuccess, onCancel,
+}: {
+  type: DeviceType;
+  assignedUserId: string;
+  allModels: DeviceModel[];
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const qc = useQueryClient();
+  const [sn, setSn]             = useState('');
+  const [modelId, setModelId]   = useState('');
+  const [qty, setQty]           = useState(1);
+  const [qtyLoading, setQtyLoading] = useState(false);
+
+  const models       = allModels.filter((m) => m.type === type && m.isActive);
+  const selectedModel = models.find((m) => m.id === modelId);
+  const mode         = getAddMode(type);
+
+  const buildPayload = (snVal: string, model?: DeviceModel) => ({
+    serialNumber: snVal,
+    type,
+    brand:   model?.brand ?? '—',
+    model:   model?.name  ?? DEVICE_TYPE_LABELS[type],
+    status:  'ASSIGNED',
+    assignedUserId,
+    condition: 'GOOD',
+    ...(model ? { processor: model.processor, ram: model.ram, storage: model.storage, screenSize: model.screenSize } : {}),
+  });
+
+  const createMut = useMutation({
+    mutationFn: (body: object) => api.post('/devices', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-devices', assignedUserId] });
+      onSuccess();
+    },
+  });
+
+  // Mode INSTANT (2+ models) — model chips, click = direct add
+  if (mode === 'instant') {
+    return (
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-[var(--border-glass)] bg-primary/5">
+        <span className="text-xs text-[var(--text-muted)]">Modèle :</span>
+        {models.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => createMut.mutate(buildPayload(`PERIPH-${Date.now()}`, m))}
+            disabled={createMut.isPending}
+            className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:bg-primary/10 hover:border-primary/30 transition-colors disabled:opacity-50"
+          >
+            {m.name}
+          </button>
+        ))}
+        {createMut.isPending && <Loader2 size={12} className="animate-spin text-[var(--text-muted)]" />}
+        <button onClick={onCancel} className="ml-auto text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+          <X size={14} />
+        </button>
+        {createMut.isError && <p className="w-full text-xs text-red-400">Erreur lors de l'ajout.</p>}
+      </div>
+    );
+  }
+
+  // Mode QUANTITY (Monitor) — quantity picker + optional model
+  if (mode === 'quantity') {
+    const handleQty = async () => {
+      setQtyLoading(true);
+      try {
+        const model = selectedModel ?? models[0];
+        for (let i = 0; i < qty; i++) {
+          await api.post('/devices', buildPayload(`MON-${Date.now() + i}`, model));
+        }
+        qc.invalidateQueries({ queryKey: ['user-devices', assignedUserId] });
+        onSuccess();
+      } catch {
+        setQtyLoading(false);
+      }
+    };
+    return (
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-[var(--border-glass)] bg-primary/5">
+        <span className="text-xs text-[var(--text-muted)]">Quantité :</span>
+        <div className="flex items-center border border-[var(--border-glass)] rounded-lg overflow-hidden">
+          <button onClick={() => setQty(Math.max(1, qty - 1))} className="px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">−</button>
+          <span className="px-3 text-xs font-semibold text-[var(--text-primary)] min-w-[1.5rem] text-center">{qty}</span>
+          <button onClick={() => setQty(Math.min(8, qty + 1))} className="px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">+</button>
+        </div>
+        {models.length > 0 && (
+          <AppSelect
+            value={modelId}
+            onChange={setModelId}
+            placeholder="Modèle (optionnel)…"
+            className="w-52"
+            options={models.map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` }))}
+          />
+        )}
+        <button
+          onClick={handleQty}
+          disabled={qtyLoading}
+          className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
+        >
+          {qtyLoading ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter {qty > 1 ? `×${qty}` : ''}</>}
+        </button>
+        <button onClick={onCancel} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"><X size={14} /></button>
+      </div>
+    );
+  }
+
+  // Mode DETAILED (Laptop/Desktop/Other/Smartphone/Tablet) — SN + model
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-[var(--border-glass)] bg-primary/5">
+      <input
+        autoFocus
+        value={sn}
+        onChange={(e) => setSn(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && sn.trim() && createMut.mutate(buildPayload(sn.trim(), selectedModel))}
+        placeholder="N° de série"
+        className="input-glass text-xs px-3 py-1.5 w-44 flex-shrink-0"
+      />
+      {models.length > 0 && (
+        <AppSelect
+          value={modelId}
+          onChange={setModelId}
+          placeholder="Modèle (catalogue)…"
+          className="w-52"
+          options={models.map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` }))}
+        />
+      )}
+      <button
+        onClick={() => createMut.mutate(buildPayload(sn.trim(), selectedModel))}
+        disabled={!sn.trim() || createMut.isPending}
+        className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
+      >
+        {createMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter</>}
+      </button>
+      <button onClick={onCancel} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"><X size={14} /></button>
+      {createMut.isError && <p className="w-full text-xs text-red-400">Erreur lors de l'ajout.</p>}
+    </div>
+  );
+}
+
+// ─── Onglet équipements ───────────────────────────────────────
+
+function TabEquipement({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+  const qc = useQueryClient();
+  const [addingType,      setAddingType]      = useState<DeviceType | null>(null);
+  const [directAddingType, setDirectAddingType] = useState<DeviceType | null>(null);
+
+  const { data: userDevices = [], isLoading } = useQuery<Device[]>({
+    queryKey: ['user-devices', userId],
+    queryFn:  async () => {
+      const r = await api.get(`/devices?assignedUserId=${userId}&limit=100`);
+      return r.data.data as Device[];
+    },
+    staleTime: 0,
+    refetchOnMount: true,
+  });
+
+  const { data: allModels = [] } = useQuery<DeviceModel[]>({
+    queryKey: ['device-models'],
+    queryFn: () => api.get('/devicemodels').then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  const devicesByType = useMemo(() => {
+    const map: Partial<Record<DeviceType, Device[]>> = {};
+    for (const d of userDevices) {
+      if (!map[d.type]) map[d.type] = [];
+      map[d.type]!.push(d);
+    }
+    return map;
+  }, [userDevices]);
+
+  // Ajout direct sans formulaire (périphériques simples)
+  const handleDirectAdd = (type: DeviceType, model?: DeviceModel) => {
+    setDirectAddingType(type);
+    api.post('/devices', {
+      serialNumber: `PERIPH-${type}-${Date.now()}`,
+      type,
+      brand:  model?.brand ?? '—',
+      model:  model?.name  ?? DEVICE_TYPE_LABELS[type],
+      status: 'ASSIGNED',
+      assignedUserId: userId,
+      condition: 'GOOD',
+    }).then(() => {
+      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      setDirectAddingType(null);
+    }).catch(() => setDirectAddingType(null));
+  };
+
+  // Retirer la station d'accueil (désassigner)
+  const removeDockingMut = useMutation({
+    mutationFn: (deviceId: string) => api.patch(`/devices/${deviceId}/unassign`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-devices', userId] }),
+  });
+
+  const handleAddClick = (cat: EquipCategory) => {
+    const mode = getAddMode(cat.type);
+    if (mode === 'instant') {
+      const typeModels = allModels.filter((m) => m.type === cat.type && m.isActive);
+      if (typeModels.length <= 1) {
+        handleDirectAdd(cat.type, typeModels[0]);
+        return;
+      }
+    }
+    if (mode === 'toggle') {
+      handleDirectAdd(cat.type);
+      return;
+    }
+    setAddingType(cat.type);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-40 rounded-lg" />
+        <Skeleton className="h-52 rounded-2xl" />
+        <Skeleton className="h-10 w-40 rounded-lg" />
+        <Skeleton className="h-80 rounded-2xl" />
+      </div>
+    );
+  }
+
+  const renderSection = (title: string, categories: EquipCategory[]) => (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">{title}</p>
+      <GlassCard padding="none">
+        {categories.map((cat, idx) => {
+          const devices  = devicesByType[cat.type] ?? [];
+          const hasItems = devices.length > 0;
+          const isAdding = addingType === cat.type;
+          const isDocking = cat.type === 'DOCKING_STATION';
+          const isDirectLoading = directAddingType === cat.type;
+          const { Icon } = cat;
+
+          return (
+            <div key={cat.type} className={idx > 0 ? 'border-t border-[var(--border-glass)]' : ''}>
+
+              {/* ── Ligne catégorie ── */}
+              <div className="flex items-center gap-3 px-4 py-2.5">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${hasItems ? cat.bg : 'bg-white/5'}`}>
+                  <Icon size={14} className={hasItems ? cat.color : 'text-[var(--text-muted)]'} />
+                </div>
+                <span className={`text-sm font-medium flex-1 ${hasItems ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+                  {cat.label}
+                </span>
+
+                {isDocking ? (
+                  // ── Docking : toggle Oui / Non ──
+                  canEdit ? (
+                    hasItems ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+                        <button
+                          onClick={() => devices[0] && removeDockingMut.mutate(devices[0].id)}
+                          disabled={removeDockingMut.isPending}
+                          className="text-xs px-2.5 py-1 rounded-lg border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-red-400 hover:border-red-400/30 transition-colors disabled:opacity-50"
+                        >
+                          {removeDockingMut.isPending ? <Loader2 size={10} className="animate-spin" /> : 'Non'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[var(--text-muted)]">—</span>
+                        <button
+                          onClick={() => handleAddClick(cat)}
+                          disabled={isDirectLoading}
+                          className="text-xs px-2.5 py-1 rounded-lg border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-emerald-400 hover:border-emerald-400/30 transition-colors disabled:opacity-50"
+                        >
+                          {isDirectLoading ? <Loader2 size={10} className="animate-spin" /> : 'Oui'}
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    hasItems
+                      ? <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+                      : <span className="text-xs text-[var(--text-muted)]">—</span>
+                  )
+                ) : (
+                  // ── Normal : checkmark / dash + bouton ajouter ──
+                  <>
+                    {hasItems
+                      ? <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+                      : <span className="text-xs text-[var(--text-muted)]">—</span>
+                    }
+                    {canEdit && !isAdding && (
+                      <button
+                        onClick={() => handleAddClick(cat)}
+                        disabled={isDirectLoading}
+                        className="ml-2 flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-primary transition-colors disabled:opacity-50"
+                      >
+                        {isDirectLoading ? <Loader2 size={10} className="animate-spin" /> : <Plus size={12} />}
+                        Ajouter
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* ── Appareils existants ── */}
+              {devices.map((d) => (
+                <div key={d.id} className="flex items-center gap-3 px-4 py-2 border-t border-[var(--border-glass)] bg-white/[0.015]">
+                  <div className="w-7 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-medium text-[var(--text-secondary)]">{d.brand} {d.model}</span>
+                    {d.serialNumber && !d.serialNumber.startsWith('PERIPH-') && !d.serialNumber.startsWith('MON-') && (
+                      <span className="text-xs text-[var(--text-muted)] ml-2 font-mono">{d.serialNumber}</span>
+                    )}
+                  </div>
+                  <StatusBadge status={d.status} />
+                </div>
+              ))}
+
+              {/* ── Formulaire ajout ── */}
+              <AnimatePresence>
+                {isAdding && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.15 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <QuickAddForm
+                      type={cat.type}
+                      assignedUserId={userId}
+                      allModels={allModels}
+                      onSuccess={() => setAddingType(null)}
+                      onCancel={() => setAddingType(null)}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+            </div>
+          );
+        })}
+      </GlassCard>
+    </div>
+  );
+
+  const workstations = EQUIP_CATEGORIES.filter((c) => c.section === 'workstation');
+  const peripherals  = EQUIP_CATEGORIES.filter((c) => c.section === 'peripheral');
+
+  return (
+    <div className="space-y-4">
+      {renderSection('Poste de travail', workstations)}
+      {renderSection('Périphériques', peripherals)}
     </div>
   );
 }
@@ -115,13 +506,24 @@ export default function DeviceDetail() {
           <button onClick={() => navigate(backTo)} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors" aria-label="Retour">
             <ArrowLeft size={16} />
           </button>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-[var(--text-primary)]">{device.brand} {device.model}</h1>
-              <StatusBadge status={device.status} />
+          {backTo === '/devices' && device.assignedUser ? (
+            <div>
+              <h1 className="text-xl font-bold text-[var(--text-primary)]">{device.assignedUser.displayName}</h1>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-sm text-[var(--text-muted)]">{device.brand} {device.model}</span>
+                <StatusBadge status={device.status} />
+              </div>
+              <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">{device.assetTag} · {device.serialNumber}</p>
             </div>
-            <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">{device.assetTag} · {device.serialNumber}</p>
-          </div>
+          ) : (
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl font-bold text-[var(--text-primary)]">{device.brand} {device.model}</h1>
+                <StatusBadge status={device.status} />
+              </div>
+              <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">{device.assetTag} · {device.serialNumber}</p>
+            </div>
+          )}
         </div>
 
         {canEdit && (
@@ -162,6 +564,7 @@ export default function DeviceDetail() {
         <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] w-fit" style={{ background: 'var(--bg-secondary)' }}>
           {[
             { value: 'info',        label: 'Informations' },
+            ...(device.assignedUser ? [{ value: 'equipment', label: 'Équipement' }] : []),
             { value: 'maintenance', label: `Maintenance (${device.maintenanceLogs?.length ?? 0})` },
             { value: 'audit',       label: `Historique (${device.auditLogs?.length ?? 0})` },
           ].map((tab) => (
@@ -182,6 +585,17 @@ export default function DeviceDetail() {
             {/* Matériel */}
             <GlassCard padding="md" animate index={0}>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Matériel</h3>
+              {device.purchaseOrder?.reference ? (
+                <div className="flex justify-between items-center gap-4 py-2 border-b border-[var(--border-glass)]">
+                  <span className="text-xs text-[var(--text-muted)] flex-shrink-0">N° commande</span>
+                  <span className="text-xs font-mono font-semibold text-primary">{device.purchaseOrder.reference}</span>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center gap-4 py-2 border-b border-[var(--border-glass)]">
+                  <span className="text-xs text-[var(--text-muted)] flex-shrink-0">N° commande</span>
+                  <span className="text-xs text-amber-400 flex items-center gap-1">⚠ Non lié à une commande</span>
+                </div>
+              )}
               <InfoRow label="Type"       value={DEVICE_TYPE_LABELS[device.type]} />
               <InfoRow label="Marque"     value={device.brand} />
               <InfoRow label="Modèle"     value={device.model} />
@@ -241,6 +655,13 @@ export default function DeviceDetail() {
             </GlassCard>
           </div>
         </Tabs.Content>
+
+        {/* ── Équipement ── */}
+        {device.assignedUser && (
+          <Tabs.Content value="equipment" className="mt-4">
+            <TabEquipement userId={device.assignedUser.id} canEdit={canEdit} />
+          </Tabs.Content>
+        )}
 
         {/* ── Maintenance ── */}
         <Tabs.Content value="maintenance" className="mt-4">
