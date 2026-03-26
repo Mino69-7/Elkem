@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Pencil, Trash2, UserRound, UserPlus, UserMinus,
   Loader2, AlertTriangle, CheckCircle, XCircle, Clock,
-  Laptop, Monitor, Cpu, Tv, Layers, Headphones, Keyboard, Mouse, Smartphone, Tablet,
-  Plus, X,
+  Laptop, Monitor, Cpu, Tv, Layers, Headphones, Keyboard, Smartphone, Tablet, Server,
+  Plus, X, Shield, ShieldOff,
 } from 'lucide-react';
 import { useDevice, useUpdateDevice, useDeleteDevice, useAssignDevice, useUnassignDevice } from '../hooks/useDevices';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -48,28 +48,25 @@ interface EquipCategory {
 }
 
 const EQUIP_CATEGORIES: EquipCategory[] = [
-  { type: 'LAPTOP',          label: 'Ordinateur portable', Icon: Laptop,     color: 'text-blue-400',    bg: 'bg-blue-500/15',    section: 'workstation' },
-  { type: 'DESKTOP',         label: 'Ordinateur fixe',     Icon: Cpu,        color: 'text-purple-400',  bg: 'bg-purple-500/15',  section: 'workstation' },
-  { type: 'OTHER',           label: 'Client léger',        Icon: Tv,         color: 'text-cyan-400',    bg: 'bg-cyan-500/15',    section: 'workstation' },
+  { type: 'LAPTOP',          label: 'PC Portable',         Icon: Laptop,     color: 'text-blue-400',    bg: 'bg-blue-500/15',    section: 'workstation' },
+  { type: 'DESKTOP',         label: 'PC Fixe',             Icon: Cpu,        color: 'text-purple-400',  bg: 'bg-purple-500/15',  section: 'workstation' },
+  { type: 'THIN_CLIENT',     label: 'PC Client léger',     Icon: Tv,         color: 'text-cyan-400',    bg: 'bg-cyan-500/15',    section: 'workstation' },
+  { type: 'LAB_WORKSTATION', label: 'PC Labo / Indus',     Icon: Server,     color: 'text-violet-400',  bg: 'bg-violet-500/15',  section: 'workstation' },
+  // Smartphones/tablettes en tête des périphériques
+  { type: 'SMARTPHONE',      label: 'Smartphone',          Icon: Smartphone, color: 'text-indigo-400',  bg: 'bg-indigo-500/15',  section: 'peripheral'  },
+  { type: 'TABLET',          label: 'Tablette',            Icon: Tablet,     color: 'text-teal-400',    bg: 'bg-teal-500/15',    section: 'peripheral'  },
   { type: 'MONITOR',         label: 'Écran',               Icon: Monitor,    color: 'text-emerald-400', bg: 'bg-emerald-500/15', section: 'peripheral'  },
   { type: 'DOCKING_STATION', label: "Station d'accueil",   Icon: Layers,     color: 'text-orange-400',  bg: 'bg-orange-500/15',  section: 'peripheral'  },
   { type: 'HEADSET',         label: 'Casque audio',        Icon: Headphones, color: 'text-pink-400',    bg: 'bg-pink-500/15',    section: 'peripheral'  },
-  { type: 'KEYBOARD',        label: 'Clavier',             Icon: Keyboard,   color: 'text-yellow-400',  bg: 'bg-yellow-500/15',  section: 'peripheral'  },
-  { type: 'MOUSE',           label: 'Souris',              Icon: Mouse,      color: 'text-red-400',     bg: 'bg-red-500/15',     section: 'peripheral'  },
-  { type: 'SMARTPHONE',      label: 'Smartphone',          Icon: Smartphone, color: 'text-indigo-400',  bg: 'bg-indigo-500/15',  section: 'peripheral'  },
-  { type: 'TABLET',          label: 'Tablette',            Icon: Tablet,     color: 'text-teal-400',    bg: 'bg-teal-500/15',    section: 'peripheral'  },
+  // KEYBOARD = "Clavier / Souris" — affiche aussi les MOUSE dans la même ligne
+  { type: 'KEYBOARD',        label: 'Clavier / Souris',    Icon: Keyboard,   color: 'text-yellow-400',  bg: 'bg-yellow-500/15',  section: 'peripheral'  },
 ];
 
-// ─── Mode d'ajout par type ────────────────────────────────────
+// Types workstation (affichage enrichi dans les items)
+const WORKSTATION_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
 
-type AddMode = 'detailed' | 'quantity' | 'instant' | 'toggle';
-
-function getAddMode(type: DeviceType): AddMode {
-  if (type === 'DOCKING_STATION') return 'toggle';
-  if (type === 'MONITOR')         return 'quantity';
-  if (type === 'HEADSET' || type === 'KEYBOARD' || type === 'MOUSE') return 'instant';
-  return 'detailed'; // LAPTOP, DESKTOP, OTHER, SMARTPHONE, TABLET
-}
+// Types téléphoniques (modal spécifique avec recherche pool)
+const PHONE_CAT_TYPES: DeviceType[] = ['SMARTPHONE', 'TABLET'];
 
 // ─── Formulaire ajout rapide ──────────────────────────────────
 
@@ -83,23 +80,29 @@ function QuickAddForm({
   onCancel: () => void;
 }) {
   const qc = useQueryClient();
-  const [sn, setSn]             = useState('');
-  const [modelId, setModelId]   = useState('');
-  const [qty, setQty]           = useState(1);
-  const [qtyLoading, setQtyLoading] = useState(false);
+  const [sn,        setSn]        = useState('');
+  const [assetTag,  setAssetTag]  = useState('');
+  const [hostname,  setHostname]  = useState('');
+  const [modelId,   setModelId]   = useState('');
+  const [qty,       setQty]       = useState(1);
+  const [docking,   setDocking]   = useState(false);
+  const [loading,   setLoading]   = useState(false);
 
-  const models       = allModels.filter((m) => m.type === type && m.isActive);
+  const models        = allModels.filter((m) => m.type === type && m.isActive);
   const selectedModel = models.find((m) => m.id === modelId);
-  const mode         = getAddMode(type);
+  const isWorkstation = WORKSTATION_TYPES.includes(type);
+  const isLab         = type === 'LAB_WORKSTATION';
+  const isMonitor     = type === 'MONITOR';
 
-  const buildPayload = (snVal: string, model?: DeviceModel) => ({
-    serialNumber: snVal,
+  // Payload de base pour un device assigné
+  const basePayload = (snVal: string, model?: DeviceModel) => ({
+    serialNumber:   snVal,
     type,
-    brand:   model?.brand ?? '—',
-    model:   model?.name  ?? DEVICE_TYPE_LABELS[type],
-    status:  'ASSIGNED',
+    brand:          model?.brand ?? '—',
+    model:          model?.name  ?? DEVICE_TYPE_LABELS[type],
+    status:         'ASSIGNED',
     assignedUserId,
-    condition: 'GOOD',
+    condition:      'GOOD',
     ...(model ? { processor: model.processor, ram: model.ram, storage: model.storage, screenSize: model.screenSize } : {}),
   });
 
@@ -107,118 +110,372 @@ function QuickAddForm({
     mutationFn: (body: object) => api.post('/devices', body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['user-devices', assignedUserId] });
-      onSuccess();
     },
   });
 
-  // Mode INSTANT (2+ models) — model chips, click = direct add
-  if (mode === 'instant') {
-    return (
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-[var(--border-glass)] bg-primary/5">
-        <span className="text-xs text-[var(--text-muted)]">Modèle :</span>
-        {models.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => createMut.mutate(buildPayload(`PERIPH-${Date.now()}`, m))}
-            disabled={createMut.isPending}
-            className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:bg-primary/10 hover:border-primary/30 transition-colors disabled:opacity-50"
-          >
-            {m.name}
-          </button>
-        ))}
-        {createMut.isPending && <Loader2 size={12} className="animate-spin text-[var(--text-muted)]" />}
-        <button onClick={onCancel} className="ml-auto text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-          <X size={14} />
-        </button>
-        {createMut.isError && <p className="w-full text-xs text-red-400">Erreur lors de l'ajout.</p>}
-      </div>
-    );
-  }
-
-  // Mode QUANTITY (Monitor) — quantity picker + optional model
-  if (mode === 'quantity') {
-    const handleQty = async () => {
-      setQtyLoading(true);
-      try {
-        const model = selectedModel ?? models[0];
-        for (let i = 0; i < qty; i++) {
-          await api.post('/devices', buildPayload(`MON-${Date.now() + i}`, model));
-        }
-        qc.invalidateQueries({ queryKey: ['user-devices', assignedUserId] });
-        onSuccess();
-      } catch {
-        setQtyLoading(false);
-      }
+  // ── Mode WORKSTATION (LAPTOP / DESKTOP / THIN_CLIENT / LAB / OTHER) ──
+  if (isWorkstation) {
+    const canSubmit = sn.trim() && assetTag.trim();
+    const handleAdd = () => {
+      if (!canSubmit) return;
+      createMut.mutate({
+        ...basePayload(sn.trim(), selectedModel),
+        assetTag: assetTag.trim().toUpperCase(),
+        ...(isLab && hostname.trim() ? { hostname: hostname.trim() } : {}),
+      }, { onSuccess });
     };
     return (
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-[var(--border-glass)] bg-primary/5">
-        <span className="text-xs text-[var(--text-muted)]">Quantité :</span>
-        <div className="flex items-center border border-[var(--border-glass)] rounded-lg overflow-hidden">
-          <button onClick={() => setQty(Math.max(1, qty - 1))} className="px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">−</button>
-          <span className="px-3 text-xs font-semibold text-[var(--text-primary)] min-w-[1.5rem] text-center">{qty}</span>
-          <button onClick={() => setQty(Math.min(8, qty + 1))} className="px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">+</button>
-        </div>
-        {models.length > 0 && (
+      <div className="px-4 py-3 border-t border-[var(--border-glass)] bg-primary/5 space-y-2.5">
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            autoFocus
+            value={sn}
+            onChange={(e) => setSn(e.target.value)}
+            placeholder="N° de série *"
+            className="input-glass text-xs px-3 py-1.5"
+          />
+          <input
+            value={assetTag}
+            onChange={(e) => setAssetTag(e.target.value.toUpperCase())}
+            placeholder="Tag actif (IT-xxxxx) *"
+            className="input-glass text-xs px-3 py-1.5 uppercase"
+          />
           <AppSelect
             value={modelId}
             onChange={setModelId}
-            placeholder="Modèle (optionnel)…"
-            className="w-52"
+            placeholder="Modèle du catalogue…"
+            className="col-span-2"
             options={models.map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` }))}
           />
-        )}
-        <button
-          onClick={handleQty}
-          disabled={qtyLoading}
-          className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
-        >
-          {qtyLoading ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter {qty > 1 ? `×${qty}` : ''}</>}
-        </button>
-        <button onClick={onCancel} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"><X size={14} /></button>
+          {isLab && (
+            <input
+              value={hostname}
+              onChange={(e) => setHostname(e.target.value)}
+              placeholder="Hostname (optionnel)"
+              className="input-glass text-xs px-3 py-1.5 col-span-2"
+            />
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleAdd}
+            disabled={!canSubmit || createMut.isPending}
+            className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
+          >
+            {createMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter</>}
+          </button>
+          <button onClick={onCancel} className="btn-secondary px-3 py-1.5 text-xs">Annuler</button>
+          {createMut.isError && <p className="text-xs text-red-400">Erreur lors de l'ajout.</p>}
+        </div>
       </div>
     );
   }
 
-  // Mode DETAILED (Laptop/Desktop/Other/Smartphone/Tablet) — SN + model
+  // ── Mode MONITOR — quantité + modèle + docking intégrée ──
+  if (isMonitor) {
+    const handleAdd = async () => {
+      setLoading(true);
+      try {
+        const model = selectedModel ?? models[0];
+        for (let i = 0; i < qty; i++) {
+          await api.post('/devices', {
+            ...basePayload(`MON-${Date.now() + i}`, model),
+            hasDocking: docking,
+          });
+        }
+        qc.invalidateQueries({ queryKey: ['user-devices', assignedUserId] });
+        onSuccess();
+      } finally {
+        setLoading(false);
+      }
+    };
+    return (
+      <div className="px-4 py-3 border-t border-[var(--border-glass)] bg-primary/5 space-y-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Quantité */}
+          <div className="flex items-center border border-[var(--border-glass)] rounded-lg overflow-hidden">
+            <button onClick={() => setQty(Math.max(1, qty - 1))} className="px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">−</button>
+            <span className="px-3 text-xs font-semibold text-[var(--text-primary)] min-w-[2rem] text-center">{qty}</span>
+            <button onClick={() => setQty(Math.min(8, qty + 1))} className="px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">+</button>
+          </div>
+          {/* Modèle */}
+          {models.length > 0 && (
+            <AppSelect
+              value={modelId}
+              onChange={setModelId}
+              placeholder="Modèle (optionnel)…"
+              className="w-52"
+              options={models.map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` }))}
+            />
+          )}
+          {/* Docking intégrée */}
+          <button
+            type="button"
+            onClick={() => setDocking(!docking)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+              docking
+                ? 'border-orange-500/40 bg-orange-500/10 text-orange-400'
+                : 'border-[var(--border-glass)] text-[var(--text-muted)] hover:bg-white/5'
+            }`}
+          >
+            <Layers size={12} />
+            Docking intégrée
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleAdd}
+            disabled={loading}
+            className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
+          >
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter {qty > 1 ? `×${qty}` : ''}</>}
+          </button>
+          <button onClick={onCancel} className="btn-secondary px-3 py-1.5 text-xs">Annuler</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Mode INSTANT (Casque, Clavier/Souris) — chips de modèles ──
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-[var(--border-glass)] bg-primary/5">
-      <input
-        autoFocus
-        value={sn}
-        onChange={(e) => setSn(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && sn.trim() && createMut.mutate(buildPayload(sn.trim(), selectedModel))}
-        placeholder="N° de série"
-        className="input-glass text-xs px-3 py-1.5 w-44 flex-shrink-0"
-      />
-      {models.length > 0 && (
-        <AppSelect
-          value={modelId}
-          onChange={setModelId}
-          placeholder="Modèle (catalogue)…"
-          className="w-52"
-          options={models.map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` }))}
-        />
-      )}
-      <button
-        onClick={() => createMut.mutate(buildPayload(sn.trim(), selectedModel))}
-        disabled={!sn.trim() || createMut.isPending}
-        className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
-      >
-        {createMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter</>}
-      </button>
-      <button onClick={onCancel} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"><X size={14} /></button>
-      {createMut.isError && <p className="w-full text-xs text-red-400">Erreur lors de l'ajout.</p>}
+    <div className="px-4 py-3 border-t border-[var(--border-glass)] bg-primary/5">
+      <div className="flex flex-wrap items-center gap-2">
+        {models.length > 0 ? (
+          models.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => createMut.mutate(basePayload(`PERIPH-${Date.now()}`, m), { onSuccess })}
+              disabled={createMut.isPending}
+              className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:bg-primary/10 hover:border-primary/30 transition-colors disabled:opacity-50"
+            >
+              {m.name}
+            </button>
+          ))
+        ) : (
+          <button
+            onClick={() => createMut.mutate(basePayload(`PERIPH-${Date.now()}`), { onSuccess })}
+            disabled={createMut.isPending}
+            className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
+          >
+            {createMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter</>}
+          </button>
+        )}
+        {createMut.isPending && <Loader2 size={12} className="animate-spin text-[var(--text-muted)]" />}
+        <button onClick={onCancel} className="ml-auto btn-secondary px-2.5 py-1.5 text-xs">Annuler</button>
+      </div>
+      {createMut.isError && <p className="mt-1 text-xs text-red-400">Erreur lors de l'ajout.</p>}
     </div>
+  );
+}
+
+// ─── Modal Smartphone / Tablette ─────────────────────────────
+
+function PhoneModal({
+  type, userId, device, onClose,
+}: {
+  type: DeviceType;
+  userId: string;
+  device: Device | null;
+  onClose: () => void;
+}) {
+  const qc       = useQueryClient();
+  const isEdit   = !!device;
+  const typeLabel = type === 'SMARTPHONE' ? 'Smartphone' : 'Tablette';
+
+  // ─ Mode affectation : recherche dans le pool IN_STOCK ──
+  const [search,       setSearch]       = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selected,     setSelected]     = useState<Device | null>(null);
+
+  // ─ Mode édition ────────────────────────────────────────
+  const [imei, setImei] = useState(device?.imei ?? '');
+  const [sn,   setSn]   = useState(device?.serialNumber ?? '');
+
+  const { data: pool = [], isFetching } = useQuery<Device[]>({
+    queryKey: ['phone-pool', type, search],
+    queryFn:  async () => {
+      const r = await api.get(`/devices?type=${type}&status=IN_STOCK&search=${encodeURIComponent(search)}&limit=15`);
+      return r.data.data as Device[];
+    },
+    enabled: !isEdit && search.length >= 2,
+    staleTime: 0,
+  });
+
+  const assignMut = useMutation({
+    mutationFn: (phoneId: string) => api.patch(`/devices/${phoneId}/assign`, { userId }),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['user-devices', userId] }); onClose(); },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: () => api.put(`/devices/${device!.id}`, { imei: imei.trim() || undefined, serialNumber: sn.trim() || undefined }),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['user-devices', userId] }); onClose(); },
+  });
+
+  const canSubmit = isEdit
+    ? !updateMut.isPending
+    : !!selected && !assignMut.isPending;
+
+  return (
+    <AnimatePresence>
+      <>
+        <motion.div
+          className="fixed inset-0 z-50 bg-black/60"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          onClick={onClose}
+        />
+        <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="w-full max-w-md flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', maxHeight: '90vh' }}
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 38 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* En-tête */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
+              <h2 className="font-semibold text-[var(--text-primary)]">
+                {isEdit ? `Modifier — ${device.brand} ${device.model}` : `Affecter un ${typeLabel}`}
+              </h2>
+              <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Corps */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {isEdit ? (
+                /* ── Mode édition ── */
+                <>
+                  <div className="rounded-xl border border-[var(--border-glass)] bg-white/[0.02] px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Modèle</p>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">{device.brand} {device.model}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">N° de série</label>
+                    <input
+                      value={sn}
+                      onChange={(e) => setSn(e.target.value)}
+                      placeholder="Ex : F3KXXXXXX"
+                      className="input-glass py-2 text-sm w-full font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">IMEI</label>
+                    <input
+                      value={imei}
+                      onChange={(e) => setImei(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                      placeholder="15 chiffres"
+                      className="input-glass py-2 text-sm w-full font-mono tracking-widest"
+                    />
+                  </div>
+                </>
+              ) : (
+                /* ── Mode affectation (pool) ── */
+                <>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Sélectionnez un {typeLabel.toLowerCase()} disponible dans le stock.
+                    Saisissez le SN ou l'IMEI pour filtrer.
+                  </p>
+                  <div className="relative">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-[var(--text-secondary)]">Rechercher par SN ou IMEI</label>
+                      <input
+                        autoFocus
+                        value={search}
+                        onChange={(e) => { setSearch(e.target.value); setSelected(null); setShowDropdown(true); }}
+                        onFocus={() => setShowDropdown(true)}
+                        placeholder="Saisir au moins 2 caractères…"
+                        className="input-glass py-2 text-sm w-full font-mono"
+                      />
+                    </div>
+                    {showDropdown && search.length >= 2 && (
+                      <div
+                        className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
+                        style={{ background: 'var(--bg-secondary)' }}
+                      >
+                        {isFetching ? (
+                          <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
+                            <Loader2 size={13} className="animate-spin" />
+                            <span className="text-xs">Recherche…</span>
+                          </div>
+                        ) : pool.length === 0 ? (
+                          <div className="px-4 py-3 text-xs text-[var(--text-muted)] text-center">
+                            Aucun {typeLabel.toLowerCase()} disponible en stock
+                          </div>
+                        ) : (
+                          pool.map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => { setSelected(p); setSearch(p.serialNumber); setShowDropdown(false); }}
+                              className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-[var(--border-glass)] last:border-0"
+                            >
+                              <p className="text-xs font-semibold text-[var(--text-primary)]">{p.brand} {p.model}</p>
+                              <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
+                                SN: {p.serialNumber}{p.imei ? ` · IMEI: ${p.imei}` : ''}
+                              </p>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {selected && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                      className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2"
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400">Sélectionné</p>
+                      <p className="text-sm font-semibold text-[var(--text-primary)]">{selected.brand} {selected.model}</p>
+                      <p className="text-xs text-[var(--text-muted)] font-mono">SN : {selected.serialNumber}</p>
+                      {selected.imei && <p className="text-xs text-[var(--text-muted)] font-mono">IMEI : {selected.imei}</p>}
+                      {selected.purchaseOrder?.reference && (
+                        <p className="text-xs text-[var(--text-muted)]">Commande : {selected.purchaseOrder.reference}</p>
+                      )}
+                    </motion.div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Pied */}
+            <div className="flex gap-3 px-5 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
+              <button onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
+              <button
+                onClick={() => isEdit ? updateMut.mutate() : selected && assignMut.mutate(selected.id)}
+                disabled={!canSubmit}
+                className="btn-primary flex-1 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {(isEdit ? updateMut.isPending : assignMut.isPending) && <Loader2 size={14} className="animate-spin" />}
+                {isEdit ? 'Enregistrer' : 'Affecter'}
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      </>
+    </AnimatePresence>
   );
 }
 
 // ─── Onglet équipements ───────────────────────────────────────
 
-function TabEquipement({ userId, canEdit, isManager }: { userId: string; canEdit: boolean; isManager?: boolean }) {
+// ─── Types workstation (ouvre la modal pleine) ───────────────
+const WORKSTATION_CAT_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
+
+function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdit: boolean; isManager?: boolean }) {
   const qc = useQueryClient();
-  const [addingType,       setAddingType]       = useState<DeviceType | null>(null);
-  const [directAddingType, setDirectAddingType] = useState<DeviceType | null>(null);
-  const [editingDevice,    setEditingDevice]    = useState<Device | null>(null);
+  const [addingType,    setAddingType]    = useState<DeviceType | null>(null);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [removingId,    setRemovingId]    = useState<string | null>(null);
+
+  // Modal pleine pour les postes de travail
+  const [wsModal, setWsModal] = useState<{ device: Device | null; type: DeviceType } | null>(null);
+  // Modal pour smartphone / tablette (assign depuis pool)
+  const [phoneModal, setPhoneModal] = useState<{ device: Device | null; type: DeviceType } | null>(null);
 
   const { data: userDevices = [], isLoading } = useQuery<Device[]>({
     queryKey: ['user-devices', userId],
@@ -245,30 +502,29 @@ function TabEquipement({ userId, canEdit, isManager }: { userId: string; canEdit
     return map;
   }, [userDevices]);
 
-  // Ajout direct sans formulaire (périphériques simples)
-  const handleDirectAdd = (type: DeviceType, model?: DeviceModel) => {
-    setDirectAddingType(type);
-    api.post('/devices', {
-      serialNumber: `PERIPH-${type}-${Date.now()}`,
-      type,
-      brand:  model?.brand ?? '—',
-      model:  model?.name  ?? DEVICE_TYPE_LABELS[type],
-      status: 'ASSIGNED',
-      assignedUserId: userId,
-      condition: 'GOOD',
-    }).then(() => {
+  // Retirer un équipement : unassign si vrai device, delete si fake (PERIPH-/MON-)
+  const removeMut = useMutation({
+    mutationFn: async (d: Device) => {
+      const isFake = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
+      return isFake
+        ? api.delete(`/devices/${d.id}`)
+        : api.patch(`/devices/${d.id}/unassign`);
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['user-devices', userId] });
-      setDirectAddingType(null);
-    }).catch(() => setDirectAddingType(null));
-  };
+      setRemovingId(null);
+    },
+    onError: () => setRemovingId(null),
+  });
 
-  // Retirer la station d'accueil (désassigner)
-  const removeDockingMut = useMutation({
-    mutationFn: (deviceId: string) => api.patch(`/devices/${deviceId}/unassign`),
+  // Toggle docking intégrée sur un écran
+  const toggleDockingMut = useMutation({
+    mutationFn: ({ id, hasDocking }: { id: string; hasDocking: boolean }) =>
+      api.put(`/devices/${id}`, { hasDocking }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['user-devices', userId] }),
   });
 
-  // Mise à jour d'un équipement depuis l'onglet
+  // Mise à jour d'un équipement depuis l'onglet (périphériques)
   const updateEquipMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: object }) => api.put(`/devices/${id}`, data),
     onSuccess: () => {
@@ -277,142 +533,231 @@ function TabEquipement({ userId, canEdit, isManager }: { userId: string; canEdit
     },
   });
 
-  const handleAddClick = (cat: EquipCategory) => {
-    const mode = getAddMode(cat.type);
-    if (mode === 'instant') {
-      const typeModels = allModels.filter((m) => m.type === cat.type && m.isActive);
-      if (typeModels.length <= 1) {
-        handleDirectAdd(cat.type, typeModels[0]);
-        return;
-      }
-    }
-    if (mode === 'toggle') {
-      handleDirectAdd(cat.type);
-      return;
-    }
-    setAddingType(cat.type);
-  };
+  // Mise à jour d'un poste de travail via modal pleine
+  const wsUpdateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: object }) => api.put(`/devices/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      setWsModal(null);
+    },
+  });
+
+  // Création d'un poste de travail depuis le toggle Équipements
+  const createEquipMut = useMutation({
+    mutationFn: (data: object) => api.post('/devices', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      setWsModal(null);
+    },
+  });
 
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <Skeleton className="h-10 w-40 rounded-lg" />
-        <Skeleton className="h-52 rounded-2xl" />
-        <Skeleton className="h-10 w-40 rounded-lg" />
-        <Skeleton className="h-80 rounded-2xl" />
+        <Skeleton className="h-8 w-36 rounded-lg" />
+        <Skeleton className="h-48 rounded-2xl" />
+        <Skeleton className="h-8 w-36 rounded-lg" />
+        <Skeleton className="h-64 rounded-2xl" />
       </div>
     );
   }
 
+  // ── Rendu d'un item équipement ──────────────────────────────
+  const renderDeviceItem = (d: Device, _cat: EquipCategory) => {
+    const isWorkstation = WORKSTATION_TYPES.includes(d.type);
+    const isMonitor     = d.type === 'MONITOR';
+    const isPhone       = PHONE_CAT_TYPES.includes(d.type);
+    const isRemoving    = removingId === d.id;
+    const isFake        = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
+
+    return (
+      <motion.div
+        key={d.id}
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--border-glass)] bg-white/[0.018] group"
+      >
+        {/* Spacer icône */}
+        <div className="w-7 flex-shrink-0" />
+
+        {/* Infos device */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-[var(--text-primary)]">
+              {d.brand} {d.model}
+            </span>
+            {isWorkstation && d.assetTag && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-mono font-semibold">
+                {d.assetTag}
+              </span>
+            )}
+            {isWorkstation && d.hostname && (
+              <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                {d.hostname}
+              </span>
+            )}
+            {!isFake && d.serialNumber && (
+              <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                {d.serialNumber}
+              </span>
+            )}
+          </div>
+          {/* N° commande pour workstations */}
+          {isWorkstation && d.purchaseOrder?.reference && (
+            <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">
+              Commande : {d.purchaseOrder.reference}
+            </span>
+          )}
+          {/* IMEI pour smartphones/tablettes */}
+          {isPhone && d.imei && (
+            <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block font-mono">
+              IMEI : {d.imei}
+            </span>
+          )}
+        </div>
+
+        {/* Docking intégrée — badge visible seulement si activée */}
+        {isMonitor && d.hasDocking && (
+          <button
+            onClick={() => toggleDockingMut.mutate({ id: d.id, hasDocking: false })}
+            disabled={toggleDockingMut.isPending}
+            title="Docking intégrée — cliquer pour retirer"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-orange-500/40 bg-orange-500/10 text-orange-400 text-[10px] font-medium transition-colors flex-shrink-0 disabled:opacity-50 hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-400"
+          >
+            <Layers size={10} />
+            Docking
+          </button>
+        )}
+
+        {/* Statut */}
+        <StatusBadge status={d.status} />
+
+        {/* Actions */}
+        {canEdit && (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => {
+                if (isWorkstation) setWsModal({ device: d, type: d.type });
+                else if (PHONE_CAT_TYPES.includes(d.type)) setPhoneModal({ device: d, type: d.type });
+                else setEditingDevice(d);
+              }}
+              title="Modifier"
+              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              onClick={() => {
+                setRemovingId(d.id);
+                removeMut.mutate(d);
+              }}
+              disabled={isRemoving}
+              title={isFake ? 'Supprimer' : 'Désassigner'}
+              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
+            >
+              {isRemoving ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+            </button>
+          </div>
+        )}
+      </motion.div>
+    );
+  };
+
+  // ── Rendu d'une section (workstation / peripherals) ─────────
   const renderSection = (title: string, categories: EquipCategory[]) => (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">{title}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">{title}</p>
       <GlassCard padding="none">
         {categories.map((cat, idx) => {
-          const devices  = devicesByType[cat.type] ?? [];
-          const hasItems = devices.length > 0;
-          const isAdding = addingType === cat.type;
-          const isDocking = cat.type === 'DOCKING_STATION';
-          const isDirectLoading = directAddingType === cat.type;
+          // La catégorie KEYBOARD affiche aussi les MOUSE
+          const devices = cat.type === 'KEYBOARD'
+            ? [...(devicesByType['KEYBOARD'] ?? []), ...(devicesByType['MOUSE'] ?? [])]
+            : (devicesByType[cat.type] ?? []);
+          const hasItems   = devices.length > 0;
+          const isAdding   = addingType === cat.type;
+          const isDocking  = cat.type === 'DOCKING_STATION';
           const isDuplicate = cat.section === 'workstation' && devices.length > 1;
-          const { Icon } = cat;
+          const { Icon }   = cat;
 
           return (
             <div key={cat.type} className={idx > 0 ? 'border-t border-[var(--border-glass)]' : ''}>
 
-              {/* ── Ligne catégorie ── */}
-              <div className="flex items-center gap-3 px-4 py-2.5">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${hasItems ? cat.bg : 'bg-white/5'}`}>
-                  <Icon size={14} className={hasItems ? cat.color : 'text-[var(--text-muted)]'} />
+              {/* ── Header catégorie ── */}
+              <div className="flex items-center gap-3 px-4 py-3">
+                {/* Icône */}
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${hasItems ? cat.bg : 'bg-white/5'}`}>
+                  <Icon size={15} className={hasItems ? cat.color : 'text-[var(--text-muted)]'} />
                 </div>
+
+                {/* Label */}
                 <span className={`text-sm font-medium flex-1 ${hasItems ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
                   {cat.label}
+                  {hasItems && !isDocking && (
+                    <span className="ml-2 text-[10px] font-normal text-[var(--text-muted)]">
+                      ({devices.length})
+                    </span>
+                  )}
                 </span>
 
                 {/* Badge doublon workstation */}
                 {isDuplicate && (
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 text-[9px] font-semibold">
                     <AlertTriangle size={9} />
-                    {devices.length} appareils
+                    {devices.length} postes
                   </span>
                 )}
 
+                {/* Docking station : toggle simple Oui/Non */}
                 {isDocking ? (
-                  // ── Docking : toggle Oui / Non ──
-                  canEdit ? (
+                  canEdit && (
                     hasItems ? (
-                      <div className="flex items-center gap-2">
-                        <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
-                        <button
-                          onClick={() => devices[0] && removeDockingMut.mutate(devices[0].id)}
-                          disabled={removeDockingMut.isPending}
-                          className="text-xs px-2.5 py-1 rounded-lg border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-red-400 hover:border-red-400/30 transition-colors disabled:opacity-50"
-                        >
-                          {removeDockingMut.isPending ? <Loader2 size={10} className="animate-spin" /> : 'Non'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-[var(--text-muted)]">—</span>
-                        <button
-                          onClick={() => handleAddClick(cat)}
-                          disabled={isDirectLoading}
-                          className="text-xs px-2.5 py-1 rounded-lg border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-emerald-400 hover:border-emerald-400/30 transition-colors disabled:opacity-50"
-                        >
-                          {isDirectLoading ? <Loader2 size={10} className="animate-spin" /> : 'Oui'}
-                        </button>
-                      </div>
-                    )
-                  ) : (
-                    hasItems
-                      ? <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
-                      : <span className="text-xs text-[var(--text-muted)]">—</span>
-                  )
-                ) : (
-                  // ── Normal : checkmark / dash + bouton ajouter ──
-                  <>
-                    {hasItems
-                      ? <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
-                      : <span className="text-xs text-[var(--text-muted)]">—</span>
-                    }
-                    {canEdit && !isAdding && (
                       <button
-                        onClick={() => handleAddClick(cat)}
-                        disabled={isDirectLoading}
-                        className="ml-2 flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-primary transition-colors disabled:opacity-50"
+                        onClick={() => removeMut.mutate(devices[0])}
+                        disabled={removeMut.isPending && removingId === devices[0]?.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-50"
                       >
-                        {isDirectLoading ? <Loader2 size={10} className="animate-spin" /> : <Plus size={12} />}
+                        <CheckCircle size={12} />
+                        Oui — retirer
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          api.post('/devices', {
+                            serialNumber: `PERIPH-DOCKING-${Date.now()}`,
+                            type: 'DOCKING_STATION',
+                            brand: '—', model: "Station d'accueil",
+                            status: 'ASSIGNED', assignedUserId: userId, condition: 'GOOD',
+                          }).then(() => qc.invalidateQueries({ queryKey: ['user-devices', userId] }));
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:border-emerald-400/30 hover:text-emerald-400 transition-colors"
+                      >
+                        <Plus size={12} />
                         Ajouter
                       </button>
-                    )}
-                  </>
+                    )
+                  )
+                ) : (
+                  /* Bouton + Ajouter visible pour toutes les autres catégories */
+                  canEdit && !isAdding && (
+                    <button
+                      onClick={() => {
+                        if (WORKSTATION_CAT_TYPES.includes(cat.type)) setWsModal({ device: null, type: cat.type });
+                        else if (PHONE_CAT_TYPES.includes(cat.type)) setPhoneModal({ device: null, type: cat.type });
+                        else setAddingType(cat.type);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors"
+                    >
+                      <Plus size={12} />
+                      Ajouter
+                    </button>
+                  )
                 )}
               </div>
 
-              {/* ── Appareils existants ── */}
-              {devices.map((d) => (
-                <div key={d.id} className="flex items-center gap-3 px-4 py-2 border-t border-[var(--border-glass)] bg-white/[0.015]">
-                  <div className="w-7 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs font-medium text-[var(--text-secondary)]">{d.brand} {d.model}</span>
-                    {d.serialNumber && !d.serialNumber.startsWith('PERIPH-') && !d.serialNumber.startsWith('MON-') && (
-                      <span className="text-xs text-[var(--text-muted)] ml-2 font-mono">{d.serialNumber}</span>
-                    )}
-                  </div>
-                  <StatusBadge status={d.status} />
-                  {canEdit && (
-                    <button
-                      onClick={() => setEditingDevice(d)}
-                      className="ml-1 p-1 rounded-lg text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors"
-                      aria-label="Modifier"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                  )}
-                </div>
-              ))}
+              {/* ── Items existants ── */}
+              {devices.map((d) => renderDeviceItem(d, cat))}
 
-              {/* ── Formulaire ajout ── */}
+              {/* ── Formulaire ajout inline ── */}
               <AnimatePresence>
                 {isAdding && (
                   <motion.div
@@ -432,7 +777,6 @@ function TabEquipement({ userId, canEdit, isManager }: { userId: string; canEdit
                   </motion.div>
                 )}
               </AnimatePresence>
-
             </div>
           );
         })}
@@ -448,15 +792,53 @@ function TabEquipement({ userId, canEdit, isManager }: { userId: string; canEdit
       {renderSection('Poste de travail', workstations)}
       {renderSection('Périphériques', peripherals)}
 
-      {/* Formulaire d'édition d'un équipement */}
+      {/* Formulaire édition périphérique (drawer latéral) */}
       {canEdit && (
         <DeviceForm
           device={editingDevice}
           isOpen={!!editingDevice}
           isSaving={updateEquipMut.isPending}
           isManager={isManager}
+          formTitle={editingDevice ? `Modifier — ${editingDevice.brand} ${editingDevice.model}` : undefined}
           onClose={() => setEditingDevice(null)}
           onSubmit={(data) => editingDevice && updateEquipMut.mutate({ id: editingDevice.id, data })}
+        />
+      )}
+
+      {/* Modal Smartphone / Tablette */}
+      {canEdit && phoneModal && (
+        <PhoneModal
+          type={phoneModal.type}
+          userId={userId}
+          device={phoneModal.device}
+          onClose={() => setPhoneModal(null)}
+        />
+      )}
+
+      {/* Modal pleine pour poste de travail (ajouter ou modifier) */}
+      {canEdit && (
+        <DeviceForm
+          device={wsModal?.device ?? null}
+          isOpen={!!wsModal}
+          isSaving={wsModal?.device ? wsUpdateMut.isPending : createEquipMut.isPending}
+          isManager={isManager}
+          modal={true}
+          hideUserField={true}
+          forcedUserId={userId}
+          initialType={wsModal?.type}
+          formTitle={
+            wsModal?.device
+              ? `Modifier — ${wsModal.device.brand} ${wsModal.device.model}`
+              : wsModal ? `Ajouter — ${DEVICE_TYPE_LABELS[wsModal.type]}` : undefined
+          }
+          onClose={() => setWsModal(null)}
+          onSubmit={(data) => {
+            if (wsModal?.device) {
+              wsUpdateMut.mutate({ id: wsModal.device.id, data });
+            } else {
+              createEquipMut.mutate({ ...data, status: 'ASSIGNED', assignedUserId: userId });
+            }
+          }}
         />
       )}
     </div>
@@ -603,7 +985,7 @@ export default function DeviceDetail() {
         <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] w-fit" style={{ background: 'var(--bg-secondary)' }}>
           {[
             { value: 'info',        label: 'Informations' },
-            ...(device.assignedUser ? [{ value: 'equipment', label: 'Équipement' }] : []),
+            ...(device.assignedUser ? [{ value: 'equipment', label: 'Équipements' }] : []),
             { value: 'maintenance', label: `Maintenance (${device.maintenanceLogs?.length ?? 0})` },
             { value: 'audit',       label: `Historique (${device.auditLogs?.length ?? 0})` },
           ].map((tab) => (
@@ -644,6 +1026,25 @@ export default function DeviceDetail() {
               <InfoRow label="Écran"      value={device.screenSize} />
               <InfoRow label="Couleur"    value={device.color} />
               <InfoRow label="Clavier"    value={device.keyboardLayout ? KEYBOARD_LAYOUT_LABELS[device.keyboardLayout] : undefined} />
+              {device.type === 'LAB_WORKSTATION' && (
+                <>
+                  {(device.hostname || device.vlan || device.ipAddress || device.macAddress || device.bitlocker !== undefined) && (
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mt-4 mb-2">Réseau</h3>
+                  )}
+                  <InfoRow label="Hostname"     value={device.hostname} />
+                  <InfoRow label="VLAN"         value={device.vlan} />
+                  <InfoRow label="Adresse IP"   value={device.ipAddress} />
+                  <InfoRow label="Adresse MAC"  value={device.macAddress} />
+                  {device.bitlocker !== undefined && device.bitlocker !== null && (
+                    <div className="flex justify-between gap-4 py-2 border-b border-[var(--border-glass)] last:border-0">
+                      <span className="text-xs text-[var(--text-muted)] flex-shrink-0">Bitlocker</span>
+                      <span className={`text-xs flex items-center gap-1 ${device.bitlocker ? 'text-emerald-400' : 'text-[var(--text-muted)]'}`}>
+                        {device.bitlocker ? <><Shield size={11} /> Activé</> : <><ShieldOff size={11} /> Désactivé</>}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
             </GlassCard>
 
             {/* Statut & localisation */}
@@ -698,7 +1099,7 @@ export default function DeviceDetail() {
         {/* ── Équipement ── */}
         {device.assignedUser && (
           <Tabs.Content value="equipment" className="mt-4">
-            <TabEquipement userId={device.assignedUser.id} canEdit={canEdit} isManager={isManager} />
+            <TabEquipements userId={device.assignedUser.id} canEdit={canEdit} isManager={isManager} />
           </Tabs.Content>
         )}
 
@@ -791,6 +1192,7 @@ export default function DeviceDetail() {
           isOpen={formOpen}
           isSaving={updateMut.isPending}
           isManager={isManager}
+          formTitle={`Modifier — ${device.assignedUser?.displayName ?? device.assetTag ?? device.serialNumber}`}
           onClose={() => setFormOpen(false)}
           onSubmit={handleUpdate}
         />

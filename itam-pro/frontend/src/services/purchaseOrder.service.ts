@@ -12,6 +12,7 @@ export interface POFormData {
 export interface ReceiveDeviceData {
   serialNumber: string;
   notes?: string;
+  imei?: string;
 }
 
 export const purchaseOrderService = {

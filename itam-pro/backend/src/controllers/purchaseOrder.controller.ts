@@ -86,9 +86,10 @@ export async function cancelOrder(req: Request, res: Response, next: NextFunctio
 export async function receiveDevice(req: Request, res: Response, next: NextFunction) {
   try {
     const { orderId } = req.params;
-    const { serialNumber, notes } = z.object({
+    const { serialNumber, notes, imei } = z.object({
       serialNumber: z.string().min(1),
       notes:        z.string().optional(),
+      imei:         z.string().optional(),
     }).parse(req.body);
 
     const order = await prisma.purchaseOrder.findUnique({
@@ -125,6 +126,7 @@ export async function receiveDevice(req: Request, res: Response, next: NextFunct
         status:       'IN_STOCK',
         condition:    'NEW',
         purchaseOrderId: orderId,
+        imei:         imei || undefined,
         notes,
       },
     });

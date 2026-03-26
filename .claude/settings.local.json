@@ -14,7 +14,9 @@
       "Bash(node -e \":*)",
       "Bash(npx tsx:*)",
       "Bash(node:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(grep -v \"^$\")"
     ]
   },
   "enabledPlugins": {

@@ -3,7 +3,8 @@
 export type Role = 'MANAGER' | 'TECHNICIAN' | 'VIEWER';
 
 export type DeviceType =
-  | 'LAPTOP' | 'DESKTOP' | 'SMARTPHONE' | 'TABLET'
+  | 'LAPTOP' | 'DESKTOP' | 'THIN_CLIENT' | 'LAB_WORKSTATION'
+  | 'SMARTPHONE' | 'TABLET'
   | 'MONITOR' | 'KEYBOARD' | 'MOUSE' | 'HEADSET'
   | 'DOCKING_STATION' | 'PRINTER' | 'OTHER';
 
@@ -78,6 +79,13 @@ export interface Device {
   intuneOsName?: string;
   notes?: string;
   qrCode?: string;
+  hostname?: string;
+  vlan?: string;
+  ipAddress?: string;
+  macAddress?: string;
+  bitlocker?: boolean;
+  hasDocking?: boolean;
+  imei?: string;
   purchaseOrderId?: string;
   purchaseOrder?: PurchaseOrder;
   createdAt: string;

@@ -8,10 +8,10 @@ import { logger } from '../lib/logger.js';
 const deviceSchema = z.object({
   assetTag:        z.string().regex(/^[A-Z0-9-]+$/, 'Format invalide (ex: ELKEM-LT-001)').optional().nullable(),
   serialNumber:    z.string().min(1, 'Numéro de série requis'),
-  type:            z.enum(['LAPTOP','DESKTOP','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
+  type:            z.enum(['LAPTOP','DESKTOP','THIN_CLIENT','LAB_WORKSTATION','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
   brand:           z.string().min(1, 'Marque requise'),
   model:           z.string().min(1, 'Modèle requis'),
-  keyboardLayout:  z.enum(['AZERTY_FR','QWERTY_US','QWERTY_UK','QWERTY_NO','QWERTY_NL','QWERTZ_DE','QWERTZ_CH','OTHER']).default('AZERTY_FR'),
+  keyboardLayout:  z.enum(['AZERTY_FR','QWERTY_US','QWERTY_UK','QWERTY_ES','QWERTY_IT','QWERTY_NO','QWERTY_NL','QWERTZ_DE','QWERTZ_CH','QWERTY_RU','QWERTY_TR','QWERTY_AR','OTHER']).default('AZERTY_FR'),
   status:          z.enum(['ORDERED','IN_STOCK','ASSIGNED','PENDING_RETURN','IN_MAINTENANCE','LOANER','LOST','STOLEN','RETIRED']).default('IN_STOCK'),
   condition:       z.enum(['NEW','EXCELLENT','GOOD','FAIR','POOR']).default('GOOD'),
   processor:       z.string().optional(),
@@ -30,6 +30,13 @@ const deviceSchema = z.object({
   notes:           z.string().optional(),
   assignedUserId:  z.string().optional(),
   purchaseOrderId: z.string().optional(),
+  hostname:        z.string().optional(),
+  vlan:            z.string().optional(),
+  ipAddress:       z.string().optional(),
+  macAddress:      z.string().optional(),
+  bitlocker:       z.boolean().optional(),
+  hasDocking:      z.boolean().optional(),
+  imei:            z.string().optional(),
 });
 
 const updateSchema = deviceSchema.partial();

@@ -42,17 +42,19 @@ export const DEVICE_STATUS_LABELS: Record<string, string> = {
 
 /** Labels types d'appareils */
 export const DEVICE_TYPE_LABELS: Record<string, string> = {
-  LAPTOP: 'Ordinateur portable',
-  DESKTOP: 'Ordinateur fixe',
-  SMARTPHONE: 'Smartphone',
-  TABLET: 'Tablette',
-  MONITOR: 'Écran',
-  KEYBOARD: 'Clavier',
-  MOUSE: 'Souris',
-  HEADSET: 'Casque',
-  DOCKING_STATION: 'Station d\'accueil',
-  PRINTER: 'Imprimante',
-  OTHER: 'Autre',
+  LAPTOP:          'PC Portable',
+  DESKTOP:         'PC Fixe',
+  THIN_CLIENT:     'PC Client léger',
+  LAB_WORKSTATION: 'PC Labo / Indus',
+  SMARTPHONE:      'Smartphone',
+  TABLET:          'Tablette',
+  MONITOR:         'Écran',
+  KEYBOARD:        'Clavier',
+  MOUSE:           'Souris',
+  HEADSET:         'Casque',
+  DOCKING_STATION: "Station d'accueil",
+  PRINTER:         'Imprimante',
+  OTHER:           'Autre',
 };
 
 /** Labels conditions */
@@ -131,15 +133,17 @@ export const DEVICE_STATUS_COLORS: Record<string, { bg: string; text: string; do
 
 /** Icône Lucide selon le type d'appareil (nom de l'icône) */
 export const DEVICE_TYPE_ICONS: Record<string, string> = {
-  LAPTOP: 'Laptop',
-  DESKTOP: 'Monitor',
-  SMARTPHONE: 'Smartphone',
-  TABLET: 'Tablet',
-  MONITOR: 'Monitor',
-  KEYBOARD: 'Keyboard',
-  MOUSE: 'Mouse',
-  HEADSET: 'Headphones',
-  DOCKING_STATION: 'Dock',
-  PRINTER: 'Printer',
-  OTHER: 'Package',
+  LAPTOP:          'Laptop',
+  DESKTOP:         'Monitor',
+  THIN_CLIENT:     'Tv',
+  LAB_WORKSTATION: 'Server',
+  SMARTPHONE:      'Smartphone',
+  TABLET:          'Tablet',
+  MONITOR:         'Monitor',
+  KEYBOARD:        'Keyboard',
+  MOUSE:           'Mouse',
+  HEADSET:         'Headphones',
+  DOCKING_STATION: 'Layers',
+  PRINTER:         'Printer',
+  OTHER:           'Package',
 };

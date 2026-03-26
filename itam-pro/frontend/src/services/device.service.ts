@@ -26,6 +26,13 @@ export interface DeviceFormData {
   notes?: string;
   assignedUserId?: string;
   purchaseOrderId?: string;
+  hostname?: string;
+  vlan?: string;
+  ipAddress?: string;
+  macAddress?: string;
+  bitlocker?: boolean;
+  hasDocking?: boolean;
+  imei?: string;
 }
 
 export const deviceService = {

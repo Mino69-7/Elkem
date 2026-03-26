@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import {
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, ChevronUp, ChevronDown,
-  Pencil, Trash2, UserRound, AlertTriangle,
+  Pencil, Trash2, UserRound, AlertTriangle, Tv, Server, Cpu,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -18,7 +18,9 @@ import { useDeviceStore } from '../../stores/deviceStore';
 
 const TYPE_ICONS: Record<DeviceType, React.ComponentType<{ size?: number; className?: string }>> = {
   LAPTOP:          Laptop,
-  DESKTOP:         Monitor,
+  DESKTOP:         Cpu,
+  THIN_CLIENT:     Tv,
+  LAB_WORKSTATION: Server,
   SMARTPHONE:      Smartphone,
   TABLET:          Tablet,
   MONITOR:         Monitor,
@@ -109,10 +111,10 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
         <thead>
           <tr className="border-b border-[var(--border-glass)]">
             <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)]">Site</th>
-            <th className="px-4 py-3 text-left"><SortHeader field="brand"    label="Appareil" /></th>
-            <th className="px-4 py-3 text-left"><SortHeader field="type"     label="Type" /></th>
-            <th className="px-4 py-3 text-left"><SortHeader field="status"   label="Statut" /></th>
             <th className="px-4 py-3 text-left hidden md:table-cell">Affecté à</th>
+            <th className="px-4 py-3 text-left"><SortHeader field="type"     label="Type" /></th>
+            <th className="px-4 py-3 text-left"><SortHeader field="brand"    label="Appareil" /></th>
+            <th className="px-4 py-3 text-left"><SortHeader field="status"   label="Statut" /></th>
             <th className="px-4 py-3 text-left hidden lg:table-cell"><SortHeader field="updatedAt" label="Modifié" /></th>
             <th className="px-4 py-3 text-right">Actions</th>
           </tr>
@@ -137,27 +139,6 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                   >
                     {device.site ?? '—'}
                   </Link>
-                </td>
-
-                {/* Appareil */}
-                <td className="px-4 py-3">
-                  <Link to={`/devices/${device.id}`} state={{ from: '/devices' }} className="hover:text-primary transition-colors">
-                    <p className="font-medium text-[var(--text-primary)]">{device.brand} {device.model}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{device.serialNumber}</p>
-                  </Link>
-                </td>
-
-                {/* Type */}
-                <td className="px-4 py-3">
-                  <span className="flex items-center gap-1.5 text-[var(--text-secondary)]">
-                    <Icon size={14} className="flex-shrink-0" />
-                    <span className="hidden sm:inline">{DEVICE_TYPE_LABELS[device.type]}</span>
-                  </span>
-                </td>
-
-                {/* Statut */}
-                <td className="px-4 py-3">
-                  <StatusBadge status={device.status} size="sm" />
                 </td>
 
                 {/* Assigné */}
@@ -202,6 +183,27 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                       Libre
                     </span>
                   )}
+                </td>
+
+                {/* Type */}
+                <td className="px-4 py-3">
+                  <span className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+                    <Icon size={14} className="flex-shrink-0" />
+                    <span className="hidden sm:inline">{DEVICE_TYPE_LABELS[device.type]}</span>
+                  </span>
+                </td>
+
+                {/* Appareil */}
+                <td className="px-4 py-3">
+                  <Link to={`/devices/${device.id}`} state={{ from: '/devices' }} className="hover:text-primary transition-colors">
+                    <p className="font-medium text-[var(--text-primary)]">{device.brand} {device.model}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{device.serialNumber}</p>
+                  </Link>
+                </td>
+
+                {/* Statut */}
+                <td className="px-4 py-3">
+                  <StatusBadge status={device.status} size="sm" />
                 </td>
 
                 {/* Modifié */}

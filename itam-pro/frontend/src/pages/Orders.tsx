@@ -100,14 +100,18 @@ interface ReceiveModalProps {
 }
 
 function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, lastReceivedSn }: ReceiveModalProps) {
-  const [sn, setSn]       = useState('');
+  const [sn,    setSn]    = useState('');
+  const [imei,  setImei]  = useState('');
   const [notes, setNotes] = useState('');
   const snRef             = useRef<HTMLInputElement>(null);
+
+  const isPhone = order?.deviceModel.type === 'SMARTPHONE' || order?.deviceModel.type === 'TABLET';
 
   // Réinitialise le formulaire après chaque réception réussie et refocalise le champ SN
   useEffect(() => {
     if (resetKey === 0) return;
     setSn('');
+    setImei('');
     setNotes('');
     setTimeout(() => snRef.current?.focus(), 50);
   }, [resetKey]);
@@ -117,7 +121,7 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, la
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!sn.trim()) return;
-    onSubmit({ serialNumber: sn.trim(), notes: notes.trim() || undefined });
+    onSubmit({ serialNumber: sn.trim(), imei: imei.trim() || undefined, notes: notes.trim() || undefined });
   };
 
   const received = order.receivedCount;
@@ -215,6 +219,18 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, la
                   className="input-glass py-2 text-sm font-mono"
                 />
               </div>
+              {isPhone && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-[var(--text-muted)]">IMEI *</label>
+                  <input
+                    value={imei}
+                    onChange={(e) => setImei(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                    placeholder="15 chiffres"
+                    required
+                    className="input-glass py-2 text-sm font-mono tracking-widest"
+                  />
+                </div>
+              )}
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-[var(--text-muted)]">Notes</label>
                 <input
@@ -237,7 +253,7 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, la
 
               <button
                 type="submit"
-                disabled={isPending || !sn.trim()}
+                disabled={isPending || !sn.trim() || (isPhone && !imei.trim())}
                 className="btn-primary w-full flex items-center justify-center gap-2 py-2.5 text-sm disabled:opacity-50"
               >
                 <CheckCircle size={15} />
