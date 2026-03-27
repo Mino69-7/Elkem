@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
@@ -65,6 +65,8 @@ function SortHeader({ field, label }: { field: string; label: string }) {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: DeviceTableProps) {
+  const navigate = useNavigate();
+
   // Calcul des doublons : même assignedUserId sur ≥2 appareils actifs
   const doublonUserIds = useMemo(() => {
     const counts = new Map<string, number>();
@@ -128,17 +130,14 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02 }}
-                className="border-b border-[var(--border-glass)] hover:bg-white/[0.03] transition-colors group"
+                onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/devices' } })}
+                className="border-b border-[var(--border-glass)] hover:bg-white/[0.03] transition-colors group cursor-pointer"
               >
                 {/* Site */}
                 <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
-                  <Link
-                    to={`/devices/${device.id}`}
-                    state={{ from: '/devices' }}
-                    className="hover:text-primary transition-colors font-semibold tracking-wide"
-                  >
+                  <span className="font-semibold tracking-wide">
                     {device.site ?? '—'}
-                  </Link>
+                  </span>
                 </td>
 
                 {/* Assigné */}
@@ -195,10 +194,8 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
 
                 {/* Appareil */}
                 <td className="px-4 py-3">
-                  <Link to={`/devices/${device.id}`} state={{ from: '/devices' }} className="hover:text-primary transition-colors">
-                    <p className="font-medium text-[var(--text-primary)]">{device.brand} {device.model}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{device.serialNumber}</p>
-                  </Link>
+                  <p className="font-medium text-[var(--text-primary)]">{device.brand} {device.model}</p>
+                  <p className="text-xs text-[var(--text-muted)]">{device.serialNumber}</p>
                 </td>
 
                 {/* Statut */}
@@ -215,14 +212,14 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => onEdit(device)}
+                      onClick={(e) => { e.stopPropagation(); onEdit(device); }}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors"
                       aria-label={`Modifier ${device.brand} ${device.model}`}
                     >
                       <Pencil size={13} />
                     </button>
                     <button
-                      onClick={() => onDelete(device)}
+                      onClick={(e) => { e.stopPropagation(); onDelete(device); }}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
                       aria-label={`Supprimer ${device.brand} ${device.model}`}
                     >

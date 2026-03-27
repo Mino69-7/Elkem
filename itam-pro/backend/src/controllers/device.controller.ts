@@ -64,6 +64,7 @@ export async function listDevices(req: Request, res: Response, next: NextFunctio
       where.OR = [
         { assetTag:    { contains: search, mode: 'insensitive' } },
         { serialNumber:{ contains: search, mode: 'insensitive' } },
+        { imei:        { contains: search, mode: 'insensitive' } },
         { brand:       { contains: search, mode: 'insensitive' } },
         { model:       { contains: search, mode: 'insensitive' } },
         { assignedUser:{ displayName: { contains: search, mode: 'insensitive' } } },

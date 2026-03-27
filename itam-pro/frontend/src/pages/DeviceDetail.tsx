@@ -303,7 +303,14 @@ function PhoneModal({
 
   const assignMut = useMutation({
     mutationFn: (phoneId: string) => api.patch(`/devices/${phoneId}/assign`, { userId }),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['user-devices', userId] }); onClose(); },
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      onClose();
+    },
   });
 
   const updateMut = useMutation({
@@ -376,66 +383,90 @@ function PhoneModal({
               ) : (
                 /* ── Mode affectation (pool) ── */
                 <>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Sélectionnez un {typeLabel.toLowerCase()} disponible dans le stock.
-                    Saisissez le SN ou l'IMEI pour filtrer.
-                  </p>
-                  <div className="relative">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-[var(--text-secondary)]">Rechercher par SN ou IMEI</label>
-                      <input
-                        autoFocus
-                        value={search}
-                        onChange={(e) => { setSearch(e.target.value); setSelected(null); setShowDropdown(true); }}
-                        onFocus={() => setShowDropdown(true)}
-                        placeholder="Saisir au moins 2 caractères…"
-                        className="input-glass py-2 text-sm w-full font-mono"
-                      />
-                    </div>
-                    {showDropdown && search.length >= 2 && (
-                      <div
-                        className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
-                        style={{ background: 'var(--bg-secondary)' }}
-                      >
-                        {isFetching ? (
-                          <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
-                            <Loader2 size={13} className="animate-spin" />
-                            <span className="text-xs">Recherche…</span>
+                  {!selected ? (
+                    <>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Sélectionnez un {typeLabel.toLowerCase()} disponible dans le stock.
+                        Saisissez le SN ou l'IMEI pour filtrer.
+                      </p>
+                      <div className="relative">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-[var(--text-secondary)]">Rechercher par SN ou IMEI</label>
+                          <input
+                            autoFocus
+                            value={search}
+                            onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); }}
+                            onFocus={() => setShowDropdown(true)}
+                            placeholder="Saisir au moins 2 caractères…"
+                            className="input-glass py-2 text-sm w-full font-mono"
+                          />
+                        </div>
+                        {showDropdown && search.length >= 2 && (
+                          <div
+                            className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
+                            style={{ background: 'var(--bg-secondary)' }}
+                          >
+                            {isFetching ? (
+                              <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
+                                <Loader2 size={13} className="animate-spin" />
+                                <span className="text-xs">Recherche…</span>
+                              </div>
+                            ) : pool.length === 0 ? (
+                              <div className="px-4 py-3 text-xs text-[var(--text-muted)] text-center">
+                                Aucun {typeLabel.toLowerCase()} disponible en stock
+                              </div>
+                            ) : (
+                              pool.map((p) => (
+                                <button
+                                  key={p.id}
+                                  onClick={() => { setSelected(p); setShowDropdown(false); }}
+                                  className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-[var(--border-glass)] last:border-0"
+                                >
+                                  <p className="text-xs font-semibold text-[var(--text-primary)]">{p.brand} {p.model}</p>
+                                  <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
+                                    SN: {p.serialNumber}{p.imei ? ` · IMEI: ${p.imei}` : ''}
+                                  </p>
+                                </button>
+                              ))
+                            )}
                           </div>
-                        ) : pool.length === 0 ? (
-                          <div className="px-4 py-3 text-xs text-[var(--text-muted)] text-center">
-                            Aucun {typeLabel.toLowerCase()} disponible en stock
-                          </div>
-                        ) : (
-                          pool.map((p) => (
-                            <button
-                              key={p.id}
-                              onClick={() => { setSelected(p); setSearch(p.serialNumber); setShowDropdown(false); }}
-                              className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-[var(--border-glass)] last:border-0"
-                            >
-                              <p className="text-xs font-semibold text-[var(--text-primary)]">{p.brand} {p.model}</p>
-                              <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
-                                SN: {p.serialNumber}{p.imei ? ` · IMEI: ${p.imei}` : ''}
-                              </p>
-                            </button>
-                          ))
                         )}
                       </div>
-                    )}
-                  </div>
-
-                  {selected && (
+                    </>
+                  ) : (
                     <motion.div
                       initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                      className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2"
+                      className="space-y-4"
                     >
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400">Sélectionné</p>
-                      <p className="text-sm font-semibold text-[var(--text-primary)]">{selected.brand} {selected.model}</p>
-                      <p className="text-xs text-[var(--text-muted)] font-mono">SN : {selected.serialNumber}</p>
-                      {selected.imei && <p className="text-xs text-[var(--text-muted)] font-mono">IMEI : {selected.imei}</p>}
-                      {selected.purchaseOrder?.reference && (
-                        <p className="text-xs text-[var(--text-muted)]">Commande : {selected.purchaseOrder.reference}</p>
-                      )}
+                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400 mb-1">Appareil sélectionné</p>
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">{selected.brand} {selected.model}</p>
+                        {selected.purchaseOrder?.reference && (
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Commande : {selected.purchaseOrder.reference}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-[var(--text-secondary)]">N° de série</label>
+                        <input
+                          readOnly
+                          value={selected.serialNumber}
+                          className="input-glass py-2 text-sm w-full font-mono bg-white/[0.02] cursor-default"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-[var(--text-secondary)]">IMEI</label>
+                        <input
+                          readOnly
+                          value={selected.imei ?? '—'}
+                          className="input-glass py-2 text-sm w-full font-mono tracking-widest bg-white/[0.02] cursor-default"
+                        />
+                      </div>
+                      <button
+                        onClick={() => { setSelected(null); setSearch(''); }}
+                        className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] underline transition-colors"
+                      >
+                        Changer de {typeLabel.toLowerCase()}
+                      </button>
                     </motion.div>
                   )}
                 </>
@@ -510,8 +541,16 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
         ? api.delete(`/devices/${d.id}`)
         : api.patch(`/devices/${d.id}/unassign`);
     },
-    onSuccess: () => {
+    onSuccess: (_, d) => {
       qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      // Vrais devices retournent en IN_STOCK → mettre à jour le stock et les alertes
+      const isFake = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
+      if (!isFake) {
+        qc.invalidateQueries({ queryKey: ['stock-summary'] });
+        qc.invalidateQueries({ queryKey: ['stock-devices'] });
+        qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      }
       setRemovingId(null);
     },
     onError: () => setRemovingId(null),

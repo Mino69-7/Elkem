@@ -434,6 +434,8 @@ function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string
           qc.invalidateQueries({ queryKey: ['orders-history'] });
           qc.invalidateQueries({ queryKey: ['stock-summary'] });
           qc.invalidateQueries({ queryKey: ['stock-devices'] });
+          qc.invalidateQueries({ queryKey: ['ordered-devices'] });
+          qc.invalidateQueries({ queryKey: ['stockalerts'] });
 
           if (newCount >= receivingOrder.quantity) {
             // Commande complète — fermeture automatique

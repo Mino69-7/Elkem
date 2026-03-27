@@ -42,6 +42,9 @@ export function useUpdateDevice(id: string) {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: ['devices'] });
       qc.invalidateQueries({ queryKey: ['device', id] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
     },
   });
 }
@@ -61,6 +64,9 @@ export function useAssignDevice(id: string) {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: ['devices'] });
       qc.invalidateQueries({ queryKey: ['device', id] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
     },
   });
 }
@@ -72,6 +78,9 @@ export function useUnassignDevice(id: string) {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: ['devices'] });
       qc.invalidateQueries({ queryKey: ['device', id] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
     },
   });
 }
