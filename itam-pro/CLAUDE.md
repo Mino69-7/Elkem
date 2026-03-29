@@ -174,7 +174,7 @@ Ordre des entrées dans la sidebar :
 - Téléphones et tablettes réceptionnés via PO entrent dans le pool `IN_STOCK` avec SN + IMEI
 - Dans l'onglet Équipements d'un profil utilisateur → "Affecter" ouvre une **PhoneModal** de recherche dans ce pool
 - Saisir ≥ 2 caractères dans le champ → dropdown progressif filtré par SN ou IMEI depuis `GET /devices?type=SMARTPHONE|TABLET&status=IN_STOCK&search=...`
-- Sélection → `PATCH /devices/:id/assign { userId }` (le device existant est affecté, pas créé)
+- Sélection → `PATCH /devices/:id/assign { userId, assetTag? }` (le device existant est affecté, pas créé)
 - **On ne peut pas inventer un téléphone** — il doit obligatoirement exister dans le pool réceptionné
 
 ### Flux statut PurchaseOrder
@@ -195,8 +195,19 @@ Récupération physique → IN_STOCK ou RETIRED
 ## Catalogue DeviceModel — champs
 
 Le catalogue supporte **tous les types de matériel** (pas uniquement les laptops Dell).
-Champs du formulaire : Type + Marque (requis), Nom (requis), Processeur, RAM, Stockage, Taille écran, Notes.
-La marque n'a pas de valeur par défaut — l'utilisateur saisit librement (Dell, Apple, HP, etc.).
+Champs obligatoires : Type + Marque + Nom du modèle.
+**Champs conditionnels selon le type :**
+
+| Type | Processeur | RAM | Stockage | Taille écran |
+|---|:---:|:---:|:---:|:---:|
+| PC Portable (LAPTOP) | ✅ | ✅ | ✅ | ✅ |
+| Smartphone / Tablette | — | — | ✅ | — |
+| Tous les autres types | — | — | — | — |
+
+- Quand le type change dans le formulaire, les champs non applicables sont **vidés automatiquement**
+- `handleSaveModel` n'envoie que les valeurs applicables au type (les autres sont `undefined`)
+- La marque n'a pas de valeur par défaut — l'utilisateur saisit librement (Dell, Apple, HP, etc.)
+- **TYPE_OPTIONS dans Orders.tsx** : MOUSE exclu (fusionné avec KEYBOARD sous label "Clavier / Souris")
 
 ---
 
@@ -217,6 +228,27 @@ Tous type LAPTOP, brand Dell, screenSize 14" :
 
 ---
 
+## Sites Elkem (référentiel validé — 2026-03-29)
+
+Définis dans `frontend/src/utils/formatters.ts` → `ELKEM_SITES`.
+Utilisés dans `DeviceForm.tsx` via `SITE_OPTIONS`.
+
+| Code | Label affiché | Préfixe hostname |
+|---|---|---|
+| SUD *(défaut)* | SUD - Saint-Fons | SFS |
+| NORD | NORD - Saint-Fons | SFS |
+| SFC | SFC - ATRiON | SFC |
+| ROU | ROU - ROUSSILLON | ROU |
+| SSS | SSS - Salaise | SSS |
+| GLD | GLD - KORNER | GLD |
+| CAR | CAR - ITALIE | CAR |
+| SPA | SPA - ESPAGNE | SPA |
+| LEV | LEV - ALLEMAGNE | LEV |
+
+**Note DB** : les devices avec `site = 'ATRiON'` (ancien code) afficheront la valeur brute. Migration manuelle si nécessaire : `UPDATE "Device" SET site='SFC' WHERE site='ATRiON'`
+
+---
+
 ## Routes API backend
 
 | Méthode | Route | Rôle requis | Description |
@@ -224,6 +256,7 @@ Tous type LAPTOP, brand Dell, screenSize 14" :
 | GET | `/api/devices?excludeStock=true` | AUTH | Liste appareils hors stock (page Utilisateurs) |
 | GET | `/api/devices?status=IN_STOCK` | AUTH | Appareils en stock (page Stock) |
 | PATCH | `/api/devices/:id` | TECHNICIAN | Mise à jour — modèle verrouillé si purchaseOrderId |
+| PATCH | `/api/devices/:id/assign` | TECHNICIAN | Assigner à un user — accepte `{ userId, assetTag? }` |
 | GET | `/api/devicemodels/stock-summary` | AUTH | Inventaire par modèle avec compteurs IN_STOCK/ORDERED |
 | GET | `/api/lookup/serial/:sn` | AUTH | Lookup SN : local → Intune → Dell |
 | GET | `/api/users?search=xxx` | AUTH | Recherche utilisateurs (UserCombobox) |
@@ -241,7 +274,7 @@ Tous type LAPTOP, brand Dell, screenSize 14" :
 
 ## DeviceForm — comportement attendu
 
-### Props clés (session 2026-03-26)
+### Props clés
 ```typescript
 interface DeviceFormProps {
   device?:        Device | null;
@@ -269,26 +302,15 @@ interface DeviceFormProps {
 - **Modèle** → auto-remplit les specs via `onModelChange()`. **En édition** : le modèle existant est pré-sélectionné via `pendingModelSearch` (recherche par brand+name quand les modèles chargent)
 - **Utilisateur assigné** : UserCombobox obligatoire par clic (pas de saisie libre)
 - **Statut** : Actif / Stock / À récupérer / Maintenance / Perdu / Volé / Rétention
-- **Site** : 9 sites Elkem (Saint-Fons SUD par défaut)
+- **Site** : 9 sites Elkem (SUD - Saint-Fons par défaut)
 - **Clavier** : 9 layouts (AZERTY_FR par défaut)
 
 ### Hostname — génération automatique
 - Champ Hostname présent pour TOUS les postes de travail : LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION
 - Format : `{PREFIX}-W-{SN}` — ex: `SFS-W-ABC1234`
-- Se remplit automatiquement quand l'utilisateur modifie le SN ou le Site (via `onChange`, ne s'écrase pas à l'ouverture du formulaire en édition)
-- Mapping site → préfixe hostname :
-
-| Site | Préfixe |
-|---|---|
-| SUD | SFS |
-| NORD | SFS |
-| ATRiON | SFC |
-| ROU | ROU |
-| SSS | SSS |
-| GLD | GLD |
-| CAR | CAR |
-| SPA | SPA |
-| LEV | LEV |
+- Se remplit automatiquement quand l'utilisateur modifie le SN ou le Site (via `onChange`)
+- Ne s'écrase pas à l'ouverture du formulaire en édition
+- Mapping défini dans `SITE_HOSTNAME_PREFIX` dans `DeviceForm.tsx` — voir tableau Sites ci-dessus
 
 ### Champs conditionnels par type
 | Types | Champs spécifiques |
@@ -300,85 +322,9 @@ interface DeviceFormProps {
 
 ---
 
-## État des phases
+## Onglet Équipements (DeviceDetail — TabEquipements)
 
-### ✅ Phase 1 — Fondations
-Monorepo, Docker, Prisma schema, seed, design system, composants UI de base, types, formatters.
-
-### ✅ Phase 2 — Authentification
-Login local (bcrypt + JWT) + SSO Azure AD. `AUTH_MODE=local` dans `.env` pour dev.
-Azure App Registration différée (demande admin en cours).
-
-### ✅ Phase 3 — Layout & Navigation
-AppShell, Sidebar (mobile drawer), TopBar (recherche câblée), MobileNav.
-
-### ✅ Phase 4 — CRUD Appareils
-CRUD complet devices + users, audit auto, permissions par rôle.
-DeviceTable, DeviceCard, DeviceFilters, DeviceForm (drawer), DeviceDetail (3 onglets : Informations, Maintenance, Historique).
-
-### ✅ Phase 5 — Dashboard + Intune
-- Dashboard bento grid : KPIs, BarChart types, DonutChart statuts, activité récente, garanties, derniers appareils
-- IntuneSync : statut connexion, sync manuelle, liste devices avec compliance
-- IntuneService : Microsoft Graph Client (GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET)
-
-### ✅ Phase 6 — Finitions (complétée — session 2026-03-24)
-- ✅ Cron alertes stock (node-cron, toutes les heures)
-- ✅ Export CSV/Excel (UTF-8 BOM, devices + audit)
-- ✅ Page Paramètres : thème dark/light + Mon compte (catalogue et alertes déplacés dans Commandes)
-- ✅ Catalogue modèles DeviceModel : tous types, toutes marques, auto-remplissage dans DeviceForm
-- ✅ AppSelect (Radix UI) pour TOUS les dropdowns — jamais <select> natif
-- ✅ UserCombobox : recherche utilisateurs temps réel, sélection obligatoire
-- ✅ Bouton Sync N° de série : Dell public API (cascade 3 endpoints) + TechDirect si DELL_API_KEY
-- ✅ Page Stock : inventaire par modèle, vue grille/liste toggle, clic modèle → liste appareils (SN, Tag, Site, Statut), onglet Déchets (RETIRED)
-- ✅ Séparation logique Stock vs Utilisateurs (excludeStock=true par défaut dans Utilisateurs)
-- ✅ Page Utilisateurs (/devices) — filtres pills compactes (Radix UI)
-- ✅ Fix complet selects natifs → AppSelect (DeviceDetail, Reports, Users, DeviceFilters)
-- ✅ Statut PENDING_RETURN ("À récupérer") — migration appliquée
-- ✅ Page Commandes (/orders) : 4 onglets — Commandes (actives), Historique (tous statuts + manager), Catalogue (CRUD modèles), Règles alerte
-- ✅ PurchaseOrder : réception SN uniquement, modal reste ouverte, assetTag = référence commande, type → modèle filtré dans formulaire création
-- ✅ MANAGER = superadmin (bypass requireRole dans auth.middleware)
-- ✅ assetTag rendu nullable et non-unique (migration appliquée)
-- ✅ Détection doublons dans DeviceTable (badge orange si user ≥ 2 devices actifs)
-- ✅ Renommage pages : "Appareils" → "Utilisateurs" (BookUser), "Utilisateurs" → "Admin" (ShieldCheck)
-- ✅ Navigation contextuelle : DeviceDetail retourne à la page d'origine (Stock, Commandes, Utilisateurs)
-
-### ✅ Phase 7 — Cohérence navigation & architecture (session 2026-03-24)
-- ✅ **Sidebar contexte** : active item correct selon l'origine — `location.state.from` lu dans `Sidebar.tsx` via `effectivePath`. Depuis Stock → "Stock" actif. Depuis Dashboard → "Dashboard" actif. Depuis Utilisateurs → "Utilisateurs" actif.
-- ✅ **Onglet Fichiers supprimé** de DeviceDetail — plus affiché nulle part. Reste : Informations · Maintenance · Historique.
-- ✅ **N° commande visible dans DeviceDetail** — champ `N° commande` (= `device.purchaseOrder?.reference`, ex: `CMD-2026-001`) ajouté dans la section "Cycle de vie". Séparation claire : Tag IT (assetTag individuel) dans le tableau, N° commande dans la fiche.
-- ✅ **State explicite sur tous les `<Link>` vers DeviceDetail** :
-  - `DeviceTable.tsx` : `state={{ from: '/devices' }}`
-  - `DeviceCard.tsx` : `state={{ from: '/devices' }}`
-  - `Dashboard.tsx` (×3 liens) : `state={{ from: '/dashboard' }}`
-  - `Stock.tsx` (déjà en place) : `state={{ from: '/stock' }}`
-
-**Règle de navigation validée :**
-> Tout `<Link>` ou `navigate()` vers `/devices/:id` DOIT passer un `state={{ from: '<route_origine>' }}`.
-> DeviceDetail lit `location.state?.from ?? '/devices'` pour le bouton retour.
-> La Sidebar lit ce même `from` pour l'item actif quand on est sur `/devices/:id`.
-
-- ⏳ PWA polish (service worker, manifest, icônes)
-- ⏳ Azure App Registration + SSO Intune (en attente droits admin)
-- ⏳ Page Dashboard — révision finale (dépend des autres pages)
-
-### ✅ Phase 8 — Équipements utilisateur & CRUD amélioré (session 2026-03-26)
-
-#### DeviceType & schéma
-- ✅ `THIN_CLIENT` et `LAB_WORKSTATION` ajoutés à l'enum `DeviceType` (migration appliquée)
-- ✅ Champs réseau sur Device : `hostname`, `vlan`, `ipAddress`, `macAddress`, `bitlocker` (migration)
-- ✅ `hasDocking Boolean?` sur Device — toggle par écran dans l'onglet Équipements (migration)
-- ✅ `imei String?` sur Device — pour smartphones et tablettes (migration)
-
-#### Onglet Équipements (DeviceDetail — TabEquipements)
-- ✅ **Postes de travail** (LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION) : bouton Ajouter/Modifier → modal centré DeviceForm avec `modal hideUserField forcedUserId`
-- ✅ **Workstation item** : affiche assetTag (pill), hostname, SN, N° commande
-- ✅ **Smartphones & Tablettes** : remontés en tête des périphériques — bouton Ajouter → `PhoneModal` (recherche pool IN_STOCK), bouton Modifier → `PhoneModal` édition SN + IMEI
-- ✅ **Écrans** : badge Docking affiché **uniquement si `hasDocking === true`** (clic = désactiver). Fix : le tag ne s'affichait pas conditionnellement avant.
-- ✅ **Clavier / Souris** : catégorie KEYBOARD affiche aussi les MOUSE dans la même ligne
-- ✅ Retrait du type "Autre poste" (OTHER) de la section Postes de travail
-- ✅ Boutons `×` (retirer/désassigner) et crayon (éditer) au survol sur chaque item
-
-#### Constants clés dans DeviceDetail.tsx
+### Constants clés dans DeviceDetail.tsx
 ```typescript
 const WORKSTATION_TYPES:     DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
 const WORKSTATION_CAT_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
@@ -388,27 +334,153 @@ const PHONE_CAT_TYPES:       DeviceType[] = ['SMARTPHONE', 'TABLET'];
 // autres périphériques  → QuickAddForm inline ou editingDevice (drawer)
 ```
 
-#### PhoneModal (DeviceDetail.tsx)
-- Mode **Affecter** (`device=null`) : input de recherche SN/IMEI → dropdown progressif `GET /devices?type=SMARTPHONE|TABLET&status=IN_STOCK&search=...` → sélection → `PATCH /devices/:id/assign`
-- Mode **Modifier** (`device=Device`) : champs SN + IMEI éditables → `PUT /devices/:id`
-- Composant autonome, pas de DeviceForm, logique minimaliste adaptée aux téléphones
+### Tickets (N° de ticket) — règle validée 2026-03-28
+Chaque équipement doit avoir un ticket associé, stocké dans `device.assetTag`.
+- **Obligatoire** : Smartphone, Tablette, Écran, Casque, Station d'accueil
+- **Optionnel** : Clavier / Souris
+- Champ pré-rempli `IT-` dans tous les formulaires
+- Tag bleu `IT-XXXXX` affiché dans la ligne de chaque équipement (tous types, pas seulement workstations)
 
-#### DeviceForm améliorations
-- ✅ **Pré-remplissage modèle en édition** : `pendingModelSearch` trouve le modèle par `brand + name` quand les modèles chargent après reset
-- ✅ **Tag actif** : valeur par défaut `IT-` à la création
-- ✅ **Hostname auto-généré** pour LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION via `onChange` (SN ou Site) — format `{PREFIX}-W-{SN}`
-- ✅ Hostname présent sur **tous les postes de travail** (pas seulement LAB_WORKSTATION)
-- ✅ VLAN / IP / MAC / Bitlocker uniquement sur LAB_WORKSTATION
+### QuickAddForm (périphériques inline)
+- **Branche WORKSTATION** : SN + assetTag (tag actif) + modèle optionnel + hostname (lab)
+- **Branche MONITOR** : ticket requis + quantité + modèle optionnel + toggle docking
+- **Branche SIMPLE** (Casque, Clavier/Souris, Station d'accueil) :
+  - Ticket (requis sauf KEYBOARD/MOUSE) + modèle optionnel + bouton Ajouter
+  - Remplace les anciens "chips de modèles" qui créaient instantanément
+  - `ticketRequired = type !== 'KEYBOARD' && type !== 'MOUSE'`
+- **Station d'accueil** : n'est plus créée via inline `api.post` direct — passe par `setAddingType('DOCKING_STATION')` → QuickAddForm branche SIMPLE
 
-#### DeviceTable (page Utilisateurs)
-- ✅ Nouveau ordre des colonnes : **Site → Affecté à → Type → Appareil → Statut → Modifié → Actions**
-- ✅ `TYPE_ICONS` complété : THIN_CLIENT (`Tv`), LAB_WORKSTATION (`Server`), DESKTOP (`Cpu`)
+### PhoneModal (Smartphone / Tablette)
+- Mode **Affecter** (`device=null`) : recherche SN/IMEI → pool IN_STOCK → sélection → champ ticket (requis) → `PATCH /devices/:id/assign { userId, assetTag }`
+- Mode **Modifier** (`device=Device`) : SN + IMEI + ticket (pré-rempli avec `device.assetTag`) → `PUT /devices/:id`
+- `canSubmit` bloqué tant que ticket non rempli (longueur > 3 = plus que `IT-`)
+- Bouton "Changer de smartphone/tablette" remet `ticketRef` à `IT-`
+- Composant autonome dans `DeviceDetail.tsx` — ne pas fusionner avec DeviceForm
 
-#### Orders.tsx — Réception SMARTPHONE/TABLET
-- ✅ Champ **IMEI** (15 chiffres, saisie numérique uniquement) ajouté dans le modal de réception quand `order.deviceModel.type === SMARTPHONE | TABLET`
-- ✅ Bouton "Réceptionner" désactivé tant que SN + IMEI non remplis pour les téléphones
-- ✅ `ReceiveDeviceData` mis à jour : `imei?: string`
-- ✅ `purchaseOrder.controller.ts` : accepte et stocke `imei` sur le device créé
+---
+
+## DeviceDetail — Onglet Informations (état actuel 2026-03-29)
+
+**2 widgets** (grille `lg:grid-cols-2`) :
+
+### Widget "Matériel"
+- N° commande (PO lié ou avertissement ⚠)
+- Type, Marque, Modèle, Processeur, RAM, Stockage, Écran, Clavier
+- Réseau (hostname, VLAN, IP, MAC, Bitlocker) — uniquement LAB_WORKSTATION
+- Notes (si présentes)
+- ~~Couleur~~ → supprimée
+
+### Widget "Statut"
+- Badge de statut
+- Site (= localisation)
+- Affectation (avatar + nom + email) ou "Non assigné"
+- Depuis (date d'assignation)
+- ~~État (condition)~~ → supprimé
+- ~~Localisation~~ → supprimé (remplacé par Site)
+
+### ~~Widget "Cycle de vie"~~ → supprimé entièrement
+Les champs Achat, Garantie, Prix, Fournisseur, N° facture, Créé le, Modifié le ne sont plus affichés dans Informations.
+
+---
+
+## DeviceDetail — Onglet Historique (état actuel 2026-03-29)
+
+- Liste tous les `auditLogs` du device : action + auteur (technicien/manager) + commentaire + date
+- **Entrée "Enregistrement créé"** toujours visible en bas de liste, grisée (opacity-50), avec `device.createdAt`
+  - Présente même si aucun auditLog n'existe → garantit que la date de création est toujours visible
+  - Sert de baseline chronologique sous tous les mouvements
+- Plus d'état vide "Aucun historique" — au minimum la date de création est affichée
+
+---
+
+## État des phases
+
+### ✅ Phases 1 à 5 — Fondations, Auth, Layout, CRUD, Dashboard + Intune
+
+### ✅ Phase 6 — Finitions & Production (2026-03-24)
+- MANAGER = superadmin (bypass `requireRole`)
+- Tag IT auto-généré à la réception : `{reference}-{NNN}`
+- Onglet "Historique" dans Commandes, `listOrders` = PENDING + PARTIAL uniquement
+- Filtres pills compactes page Utilisateurs (Radix UI)
+- Fix global : tous les `<select>` natifs → AppSelect
+- PENDING_RETURN ("À récupérer") ajouté comme statut DeviceStatus
+- PurchaseOrder (Bon de Commande) : modèle Prisma avec compteur anti-fraude
+- Page Commandes (/orders) : 4 onglets — Commandes, Historique, Catalogue, Règles alerte
+- Page Stock : inventaire par modèle, vue grille/liste, onglet Déchets
+- Détection doublons dans DeviceTable (badge orange)
+- Sidebar renommée : "Utilisateurs" (BookUser) = parc déployé, "Admin" (ShieldCheck) = comptes IT
+
+### ✅ Phase 7 — Cohérence navigation & architecture (2026-03-24)
+- Sidebar lit `location.state.from` → item actif correct quelle que soit la page d'origine
+- Onglet Fichiers supprimé de DeviceDetail
+- N° commande visible dans DeviceDetail (section Cycle de vie → maintenant dans widget Matériel)
+- State explicite sur tous les `<Link>` / `navigate()` vers `/devices/:id`
+
+**Règle de navigation validée :**
+> Tout `<Link>` ou `navigate()` vers `/devices/:id` DOIT passer `state={{ from: '<route_origine>' }}`.
+> DeviceDetail lit `location.state?.from ?? '/devices'` pour le bouton retour.
+> La Sidebar lit ce même `from` pour l'item actif quand on est sur `/devices/:id`.
+
+### ✅ Phase 8 — Gestion utilisateurs inactive + édition équipement (2026-03-25)
+- Soft-delete utilisateurs : bouton "Désactiver" (MANAGER), `isActive: false`, avatar rouge + badge
+- DeviceTable : avatar rouge + badge "Inactif" si `assignedUser.isActive === false`
+- DeviceDetail onglet Équipements : icône crayon par ligne → DeviceForm en édition
+- Détection doublon workstation dans onglet Équipements
+- DeviceForm refactorisé : props `isManager`, `requireUser`, `formTitle`, `modal`, `hideUserField`, `forcedUserId`, `initialType`
+- PO section en lecture seule dans DeviceForm (plus de dropdown → évite crash Radix `value=""`)
+
+### ✅ Phase 9 — Types d'appareils, DeviceForm refacto & onglet Équipements complet (2026-03-26)
+- `THIN_CLIENT` + `LAB_WORKSTATION` ajoutés à DeviceType (migration)
+- Champs réseau : hostname, vlan, ipAddress, macAddress, bitlocker (migration)
+- `hasDocking Boolean?` sur Device (migration)
+- `imei String?` sur Device (migration)
+- DeviceForm : `modal=true` (popup) vs drawer latéral, hostname auto sur tous workstations
+- QuickAddForm : 3 branches (workstation / monitor / simple périphérique)
+- PhoneModal : mode Affecter (pool) + mode Modifier (SN + IMEI)
+- PHONE_CAT_TYPES = ['SMARTPHONE', 'TABLET'] — remontés en tête des périphériques
+- Docking badge orange uniquement si `hasDocking === true`
+- IMEI affiché sous chaque item Smartphone/Tablette
+- Orders.tsx : champ IMEI obligatoire dans réception si type SMARTPHONE/TABLET
+
+### ✅ Phase 10 — Corrections stock & formulaire smartphone (2026-03-27)
+- PhoneModal : SN + IMEI affichés en read-only après sélection, bouton "Changer"
+- Backend : recherche par IMEI dans le pool (`listDevices`)
+- Synchronisation invalidation cache : toute mutation qui change le `status` d'un device DOIT invalider `['stock-summary']`, `['stock-devices']`, `['stockalerts']`
+- DeviceTable : ligne entière cliquable (`<tr onClick>` + `e.stopPropagation()` sur les boutons)
+
+### ✅ Phase 11 — Tickets pour tous les équipements (2026-03-28)
+- **Champ ticket (assetTag)** ajouté à tous les formulaires d'équipement périphérique
+- Pré-rempli `IT-`, obligatoire sauf Clavier/Souris
+- `QuickAddForm` branche SIMPLE : remplace chips instantanés par formulaire ticket + modèle
+- `QuickAddForm` branche MONITOR : ticket requis en tête du formulaire
+- `PhoneModal` : ticket requis dans les deux modes (assign + edit), pré-rempli depuis `device.assetTag` en édition
+- `assignDevice` backend : accepte `assetTag` optionnel dans le body
+- `renderDeviceItem` : tag bleu affiché pour **tous les types** (plus uniquement workstations)
+- Station d'accueil : passe par `setAddingType('DOCKING_STATION')` + QuickAddForm (plus de création inline directe)
+
+### ✅ Phase 12 — Corrections UI diverses (2026-03-29)
+
+#### Orders.tsx — Catalogue modèles
+- `TYPE_OPTIONS` : MOUSE exclu, KEYBOARD label → "Clavier / Souris" (fusion visuelle)
+- Formulaire modèle : champs Processeur/RAM/Taille écran visibles **uniquement LAPTOP**
+- Stockage visible uniquement pour LAPTOP, SMARTPHONE, TABLET
+- Changement de type dans le formulaire → vide automatiquement les champs non applicables
+- `handleSaveModel` n'envoie que les valeurs pertinentes au type sélectionné
+
+#### DeviceDetail — Onglet Informations
+- Widget "Cycle de vie" **supprimé**
+- Widget "Matériel" : ligne Couleur supprimée, Notes déplacées ici
+- Widget "Statut" : lignes État et Localisation supprimées, Site conservé
+- Grille : `lg:grid-cols-3` → `lg:grid-cols-2`
+- Import `DEVICE_CONDITION_LABELS` supprimé (devenu inutile)
+
+#### DeviceDetail — Onglet Historique
+- Entrée "Enregistrement créé" toujours affichée en bas (depuis `device.createdAt`)
+- Plus d'état vide "Aucun historique"
+
+#### Sites Elkem
+- Code `ATRiON` renommé `SFC` dans `ELKEM_SITES` (formatters.ts) et `SITE_HOSTNAME_PREFIX` (DeviceForm.tsx)
+- Labels mis à jour : "SFC - ATRiON", "ROU - ROUSSILLON", "CAR - ITALIE", "SPA - ESPAGNE", "LEV - ALLEMAGNE"
 
 ---
 
@@ -421,9 +493,18 @@ const PHONE_CAT_TYPES:       DeviceType[] = ['SMARTPHONE', 'TABLET'];
 - KeyboardLayout enum étendu : QWERTY_ES, QWERTY_IT, QWERTY_RU, QWERTY_TR, QWERTY_AR ajoutés
 - Après migration Prisma, redémarrer le backend pour recharger le binaire `.dll.node` Prisma
 - **lucide-react v0.441** : `size` prop accepte `string | number` — Vite ignore les erreurs TS2322 en dev, pas bloquant
-- **SITE_HOSTNAME_PREFIX** défini dans `DeviceForm.tsx` (module-level) — SUD/NORD → SFS, ATRiON → SFC, ROU → ROU, SSS → SSS, GLD → GLD, CAR → CAR, SPA → SPA, LEV → LEV
+- **SITE_HOSTNAME_PREFIX** défini dans `DeviceForm.tsx` (module-level) — SUD/NORD → SFS, SFC → SFC, ROU/SSS/GLD/CAR/SPA/LEV → inchangés
 - **DeviceForm `pendingModelSearch`** : à l'ouverture en édition, `reset()` positionne `modelId=''` + déclenche une recherche `{ brand, model }` → quand les modèles chargent, le bon `modelId` est sélectionné automatiquement. Ne jamais enlever ce mécanisme.
 - **PhoneModal** est un composant indépendant dans `DeviceDetail.tsx` — ne pas fusionner avec `DeviceForm` (logiques très différentes : assign depuis pool vs create)
 - **Retrait supprimer/désassigner device Équipements** : devices avec SN préfixé `PERIPH-` ou `MON-` → `DELETE`, vrais devices → `PATCH /unassign` (zéro suppression)
 - **TYPE_ICONS dans DeviceTable et Orders** : toujours inclure THIN_CLIENT et LAB_WORKSTATION — sinon erreur TypeScript sur le Record complet
 - **GET /devices?type=SMARTPHONE&status=IN_STOCK&search=** : utilisé par PhoneModal pour filtrer le pool de téléphones disponibles à l'affectation
+- **Règle invalidation cache** : toute mutation changeant le `status` d'un device DOIT invalider `['stock-summary']`, `['stock-devices']`, `['stockalerts']`
+
+---
+
+## En attente
+
+- ⏳ PWA polish (service worker, manifest, icônes complètes)
+- ⏳ Azure App Registration + SSO Intune (en attente droits admin)
+- ⏳ Page Dashboard — révision finale

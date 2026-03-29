@@ -244,7 +244,7 @@ export async function deleteDevice(req: Request, res: Response, next: NextFuncti
 
 export async function assignDevice(req: Request, res: Response, next: NextFunction) {
   try {
-    const { userId } = req.body;
+    const { userId, assetTag } = req.body;
     if (!userId) return res.status(400).json({ message: 'userId requis' });
 
     const [device, user] = await Promise.all([
@@ -257,7 +257,7 @@ export async function assignDevice(req: Request, res: Response, next: NextFuncti
 
     const updated = await prisma.device.update({
       where: { id: device.id },
-      data: { assignedUserId: userId, assignedAt: new Date(), status: 'ASSIGNED' },
+      data: { assignedUserId: userId, assignedAt: new Date(), status: 'ASSIGNED', ...(assetTag ? { assetTag } : {}) },
       include: { assignedUser: { select: { id: true, displayName: true, email: true, avatar: true } } },
     });
 

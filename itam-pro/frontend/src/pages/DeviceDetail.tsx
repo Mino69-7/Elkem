@@ -19,7 +19,7 @@ import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import {
   formatDate, formatDateTime, formatPrice,
-  DEVICE_TYPE_LABELS, DEVICE_CONDITION_LABELS, KEYBOARD_LAYOUT_LABELS, AUDIT_ACTION_LABELS,
+  DEVICE_TYPE_LABELS, KEYBOARD_LAYOUT_LABELS, AUDIT_ACTION_LABELS,
 } from '../utils/formatters';
 import type { DeviceFormData } from '../services/device.service';
 import type { Device, DeviceType, DeviceModel } from '../types';
@@ -87,12 +87,14 @@ function QuickAddForm({
   const [qty,       setQty]       = useState(1);
   const [docking,   setDocking]   = useState(false);
   const [loading,   setLoading]   = useState(false);
+  const [ticketRef, setTicketRef] = useState('IT-');
 
   const models        = allModels.filter((m) => m.type === type && m.isActive);
   const selectedModel = models.find((m) => m.id === modelId);
   const isWorkstation = WORKSTATION_TYPES.includes(type);
   const isLab         = type === 'LAB_WORKSTATION';
   const isMonitor     = type === 'MONITOR';
+  const ticketRequired = type !== 'KEYBOARD' && type !== 'MOUSE';
 
   // Payload de base pour un device assigné
   const basePayload = (snVal: string, model?: DeviceModel) => ({
@@ -104,6 +106,7 @@ function QuickAddForm({
     assignedUserId,
     condition:      'GOOD',
     ...(model ? { processor: model.processor, ram: model.ram, storage: model.storage, screenSize: model.screenSize } : {}),
+    ...(ticketRef.trim().length > 3 ? { assetTag: ticketRef.trim().toUpperCase() } : {}),
   });
 
   const createMut = useMutation({
@@ -191,6 +194,13 @@ function QuickAddForm({
     };
     return (
       <div className="px-4 py-3 border-t border-[var(--border-glass)] bg-primary/5 space-y-2.5">
+        <input
+          autoFocus
+          value={ticketRef}
+          onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
+          placeholder="N° ticket (IT-XXXXX) *"
+          className="input-glass text-xs px-3 py-1.5 w-full uppercase"
+        />
         <div className="flex items-center gap-2 flex-wrap">
           {/* Quantité */}
           <div className="flex items-center border border-[var(--border-glass)] rounded-lg overflow-hidden">
@@ -225,7 +235,7 @@ function QuickAddForm({
         <div className="flex items-center gap-2">
           <button
             onClick={handleAdd}
-            disabled={loading}
+            disabled={loading || ticketRef.trim().length <= 3}
             className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
           >
             {loading ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter {qty > 1 ? `×${qty}` : ''}</>}
@@ -236,34 +246,42 @@ function QuickAddForm({
     );
   }
 
-  // ── Mode INSTANT (Casque, Clavier/Souris) — chips de modèles ──
+  // ── Mode SIMPLE (Casque, Clavier / Souris, Station d'accueil) ──
+  const canSubmitSimple = !ticketRequired || ticketRef.trim().length > 3;
+  const handleAddSimple = () => {
+    createMut.mutate(basePayload(`PERIPH-${Date.now()}`, selectedModel ?? models[0]), { onSuccess });
+  };
+
   return (
-    <div className="px-4 py-3 border-t border-[var(--border-glass)] bg-primary/5">
-      <div className="flex flex-wrap items-center gap-2">
-        {models.length > 0 ? (
-          models.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => createMut.mutate(basePayload(`PERIPH-${Date.now()}`, m), { onSuccess })}
-              disabled={createMut.isPending}
-              className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border-glass)] text-[var(--text-secondary)] hover:bg-primary/10 hover:border-primary/30 transition-colors disabled:opacity-50"
-            >
-              {m.name}
-            </button>
-          ))
-        ) : (
-          <button
-            onClick={() => createMut.mutate(basePayload(`PERIPH-${Date.now()}`), { onSuccess })}
-            disabled={createMut.isPending}
-            className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
-          >
-            {createMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter</>}
-          </button>
+    <div className="px-4 py-3 border-t border-[var(--border-glass)] bg-primary/5 space-y-2.5">
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          autoFocus
+          value={ticketRef}
+          onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
+          placeholder={ticketRequired ? 'N° ticket (IT-XXXXX) *' : 'N° ticket (optionnel)'}
+          className="input-glass text-xs px-3 py-1.5 uppercase"
+        />
+        {models.length > 0 && (
+          <AppSelect
+            value={modelId}
+            onChange={setModelId}
+            placeholder="Modèle (optionnel)…"
+            options={models.map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` }))}
+          />
         )}
-        {createMut.isPending && <Loader2 size={12} className="animate-spin text-[var(--text-muted)]" />}
-        <button onClick={onCancel} className="ml-auto btn-secondary px-2.5 py-1.5 text-xs">Annuler</button>
       </div>
-      {createMut.isError && <p className="mt-1 text-xs text-red-400">Erreur lors de l'ajout.</p>}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleAddSimple}
+          disabled={!canSubmitSimple || createMut.isPending}
+          className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 flex items-center gap-1"
+        >
+          {createMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} />Ajouter</>}
+        </button>
+        <button onClick={onCancel} className="btn-secondary px-3 py-1.5 text-xs">Annuler</button>
+        {createMut.isError && <p className="text-xs text-red-400">Erreur lors de l'ajout.</p>}
+      </div>
     </div>
   );
 }
@@ -288,8 +306,9 @@ function PhoneModal({
   const [selected,     setSelected]     = useState<Device | null>(null);
 
   // ─ Mode édition ────────────────────────────────────────
-  const [imei, setImei] = useState(device?.imei ?? '');
-  const [sn,   setSn]   = useState(device?.serialNumber ?? '');
+  const [imei,      setImei]      = useState(device?.imei ?? '');
+  const [sn,        setSn]        = useState(device?.serialNumber ?? '');
+  const [ticketRef, setTicketRef] = useState(device?.assetTag ?? 'IT-');
 
   const { data: pool = [], isFetching } = useQuery<Device[]>({
     queryKey: ['phone-pool', type, search],
@@ -302,7 +321,10 @@ function PhoneModal({
   });
 
   const assignMut = useMutation({
-    mutationFn: (phoneId: string) => api.patch(`/devices/${phoneId}/assign`, { userId }),
+    mutationFn: (phoneId: string) => api.patch(`/devices/${phoneId}/assign`, {
+      userId,
+      ...(ticketRef.trim().length > 3 ? { assetTag: ticketRef.trim().toUpperCase() } : {}),
+    }),
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: ['user-devices', userId] });
       qc.invalidateQueries({ queryKey: ['devices'] });
@@ -314,13 +336,17 @@ function PhoneModal({
   });
 
   const updateMut = useMutation({
-    mutationFn: () => api.put(`/devices/${device!.id}`, { imei: imei.trim() || undefined, serialNumber: sn.trim() || undefined }),
+    mutationFn: () => api.put(`/devices/${device!.id}`, {
+      imei: imei.trim() || undefined,
+      serialNumber: sn.trim() || undefined,
+      ...(ticketRef.trim().length > 3 ? { assetTag: ticketRef.trim().toUpperCase() } : {}),
+    }),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['user-devices', userId] }); onClose(); },
   });
 
   const canSubmit = isEdit
-    ? !updateMut.isPending
-    : !!selected && !assignMut.isPending;
+    ? ticketRef.trim().length > 3 && !updateMut.isPending
+    : !!selected && ticketRef.trim().length > 3 && !assignMut.isPending;
 
   return (
     <AnimatePresence>
@@ -377,6 +403,15 @@ function PhoneModal({
                       onChange={(e) => setImei(e.target.value.replace(/\D/g, '').slice(0, 15))}
                       placeholder="15 chiffres"
                       className="input-glass py-2 text-sm w-full font-mono tracking-widest"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">N° ticket <span className="text-red-400">*</span></label>
+                    <input
+                      value={ticketRef}
+                      onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
+                      placeholder="IT-XXXXX"
+                      className="input-glass py-2 text-sm w-full font-mono uppercase"
                     />
                   </div>
                 </>
@@ -461,8 +496,18 @@ function PhoneModal({
                           className="input-glass py-2 text-sm w-full font-mono tracking-widest bg-white/[0.02] cursor-default"
                         />
                       </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-[var(--text-secondary)]">N° ticket <span className="text-red-400">*</span></label>
+                        <input
+                          autoFocus
+                          value={ticketRef}
+                          onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
+                          placeholder="IT-XXXXX"
+                          className="input-glass py-2 text-sm w-full font-mono uppercase"
+                        />
+                      </div>
                       <button
-                        onClick={() => { setSelected(null); setSearch(''); }}
+                        onClick={() => { setSelected(null); setSearch(''); setTicketRef('IT-'); }}
                         className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] underline transition-colors"
                       >
                         Changer de {typeLabel.toLowerCase()}
@@ -625,7 +670,7 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
             <span className="text-xs font-semibold text-[var(--text-primary)]">
               {d.brand} {d.model}
             </span>
-            {isWorkstation && d.assetTag && (
+            {d.assetTag && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-mono font-semibold">
                 {d.assetTag}
               </span>
@@ -759,20 +804,15 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
                         Oui — retirer
                       </button>
                     ) : (
-                      <button
-                        onClick={() => {
-                          api.post('/devices', {
-                            serialNumber: `PERIPH-DOCKING-${Date.now()}`,
-                            type: 'DOCKING_STATION',
-                            brand: '—', model: "Station d'accueil",
-                            status: 'ASSIGNED', assignedUserId: userId, condition: 'GOOD',
-                          }).then(() => qc.invalidateQueries({ queryKey: ['user-devices', userId] }));
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:border-emerald-400/30 hover:text-emerald-400 transition-colors"
-                      >
-                        <Plus size={12} />
-                        Ajouter
-                      </button>
+                      !isAdding && (
+                        <button
+                          onClick={() => setAddingType('DOCKING_STATION')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:border-emerald-400/30 hover:text-emerald-400 transition-colors"
+                        >
+                          <Plus size={12} />
+                          Ajouter
+                        </button>
+                      )
                     )
                   )
                 ) : (
@@ -1040,7 +1080,7 @@ export default function DeviceDetail() {
 
         {/* ── Informations ── */}
         <Tabs.Content value="info" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
             {/* Matériel */}
             <GlassCard padding="md" animate index={0}>
@@ -1063,7 +1103,6 @@ export default function DeviceDetail() {
               <InfoRow label="RAM"        value={device.ram} />
               <InfoRow label="Stockage"   value={device.storage} />
               <InfoRow label="Écran"      value={device.screenSize} />
-              <InfoRow label="Couleur"    value={device.color} />
               <InfoRow label="Clavier"    value={device.keyboardLayout ? KEYBOARD_LAYOUT_LABELS[device.keyboardLayout] : undefined} />
               {device.type === 'LAB_WORKSTATION' && (
                 <>
@@ -1084,15 +1123,19 @@ export default function DeviceDetail() {
                   )}
                 </>
               )}
+              {device.notes && (
+                <>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mt-4 mb-2">Notes</h3>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{device.notes}</p>
+                </>
+              )}
             </GlassCard>
 
-            {/* Statut & localisation */}
+            {/* Statut & Affectation */}
             <GlassCard padding="md" animate index={1}>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Statut</h3>
               <div className="mb-3"><StatusBadge status={device.status} /></div>
-              <InfoRow label="État"         value={device.condition ? DEVICE_CONDITION_LABELS[device.condition] : undefined} />
-              <InfoRow label="Localisation" value={device.location} />
-              <InfoRow label="Site"         value={device.site} />
+              <InfoRow label="Site" value={device.site} />
 
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mt-4 mb-3">Affectation</h3>
               {device.assignedUser ? (
@@ -1112,25 +1155,6 @@ export default function DeviceDetail() {
                 </div>
               )}
               <InfoRow label="Depuis" value={device.assignedAt ? formatDate(device.assignedAt) : undefined} />
-            </GlassCard>
-
-            {/* Cycle de vie */}
-            <GlassCard padding="md" animate index={2}>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Cycle de vie</h3>
-              <InfoRow label="Achat"        value={formatDate(device.purchaseDate)} />
-              <InfoRow label="Garantie"     value={formatDate(device.warrantyExpiry)} />
-              <InfoRow label="Prix d'achat" value={formatPrice(device.purchasePrice)} />
-              <InfoRow label="Fournisseur"  value={device.supplier} />
-              <InfoRow label="N° commande"  value={device.purchaseOrder?.reference} />
-              <InfoRow label="N° facture"   value={device.invoiceNumber} />
-              <InfoRow label="Créé le"      value={formatDate(device.createdAt)} />
-              <InfoRow label="Modifié le"   value={formatDate(device.updatedAt)} />
-              {device.notes && (
-                <>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mt-4 mb-2">Notes</h3>
-                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{device.notes}</p>
-                </>
-              )}
             </GlassCard>
           </div>
         </Tabs.Content>
@@ -1185,40 +1209,42 @@ export default function DeviceDetail() {
         {/* ── Historique d'audit ── */}
         <Tabs.Content value="audit" className="mt-4">
           <GlassCard padding="none">
-            {!device.auditLogs?.length ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3 text-[var(--text-muted)]">
-                <Clock size={36} className="opacity-30" />
-                <p className="text-sm">Aucun historique</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-[var(--border-glass)]">
-                {device.auditLogs.map((log, i) => (
-                  <motion.div
-                    key={log.id}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.02 }}
-                    className="flex gap-3 px-4 py-3"
-                  >
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-medium text-[var(--text-primary)]">
-                          {AUDIT_ACTION_LABELS[log.action] ?? log.action}
-                        </span>
-                        <span className="text-xs text-[var(--text-muted)]">par {log.user?.displayName ?? '—'}</span>
-                      </div>
-                      {(log.comment || (log.oldValue && log.newValue)) && (
-                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                          {log.comment ?? `${log.oldValue} → ${log.newValue}`}
-                        </p>
-                      )}
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">{formatDateTime(log.createdAt)}</p>
+            <div className="divide-y divide-[var(--border-glass)]">
+              {(device.auditLogs ?? []).map((log, i) => (
+                <motion.div
+                  key={log.id}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.02 }}
+                  className="flex gap-3 px-4 py-3"
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-medium text-[var(--text-primary)]">
+                        {AUDIT_ACTION_LABELS[log.action] ?? log.action}
+                      </span>
+                      <span className="text-xs text-[var(--text-muted)]">par {log.user?.displayName ?? '—'}</span>
                     </div>
-                  </motion.div>
-                ))}
+                    {(log.comment || (log.oldValue && log.newValue)) && (
+                      <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                        {log.comment ?? `${log.oldValue} → ${log.newValue}`}
+                      </p>
+                    )}
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{formatDateTime(log.createdAt)}</p>
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Entrée de création — toujours visible en bas */}
+              <div className="flex gap-3 px-4 py-3 opacity-50">
+                <div className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] mt-1.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-medium text-[var(--text-primary)]">Enregistrement créé</span>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">{formatDateTime(device.createdAt)}</p>
+                </div>
               </div>
-            )}
+            </div>
           </GlassCard>
         </Tabs.Content>
 

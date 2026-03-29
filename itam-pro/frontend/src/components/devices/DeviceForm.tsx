@@ -54,15 +54,15 @@ const HAS_SPECS = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION', 'SMART
 
 // Préfixes hostname par site (format : {PREFIX}-W-{SN})
 const SITE_HOSTNAME_PREFIX: Record<string, string> = {
-  SUD:    'SFS',
-  NORD:   'SFS',
-  ATRiON: 'SFC',
-  ROU:    'ROU',
-  SSS:    'SSS',
-  GLD:    'GLD',
-  CAR:    'CAR',
-  SPA:    'SPA',
-  LEV:    'LEV',
+  SUD:  'SFS',
+  NORD: 'SFS',
+  SFC:  'SFC',
+  ROU:  'ROU',
+  SSS:  'SSS',
+  GLD:  'GLD',
+  CAR:  'CAR',
+  SPA:  'SPA',
+  LEV:  'LEV',
 };
 
 // ─── Schéma Zod (hors composant) ──────────────────────────────

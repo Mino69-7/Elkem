@@ -85,15 +85,15 @@ export const KEYBOARD_LAYOUT_LABELS: Record<string, string> = {
 
 /** Sites Elkem */
 export const ELKEM_SITES = [
-  { code: 'SUD',    label: 'SUD — Saint-Fons'  },
-  { code: 'NORD',   label: 'NORD — Saint-Fons' },
-  { code: 'ATRiON', label: 'ATRiON'            },
-  { code: 'ROU',    label: 'ROU — Roussillon'  },
-  { code: 'SSS',    label: 'SSS — Salaise'     },
-  { code: 'GLD',    label: 'GLD — KORNER'      },
-  { code: 'CAR',    label: 'CAR — Italie'      },
-  { code: 'SPA',    label: 'SPA — Espagne'     },
-  { code: 'LEV',    label: 'LEV — Allemagne'   },
+  { code: 'SUD',  label: 'SUD - Saint-Fons'  },
+  { code: 'NORD', label: 'NORD - Saint-Fons' },
+  { code: 'SFC',  label: 'SFC - ATRiON'      },
+  { code: 'ROU',  label: 'ROU - ROUSSILLON'  },
+  { code: 'SSS',  label: 'SSS - Salaise'     },
+  { code: 'GLD',  label: 'GLD - KORNER'      },
+  { code: 'CAR',  label: 'CAR - ITALIE'      },
+  { code: 'SPA',  label: 'SPA - ESPAGNE'     },
+  { code: 'LEV',  label: 'LEV - ALLEMAGNE'   },
 ] as const;
 
 export type ElkemSite = typeof ELKEM_SITES[number]['code'];
