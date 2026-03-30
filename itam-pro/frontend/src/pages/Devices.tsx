@@ -21,7 +21,7 @@ export default function Devices() {
   const { user } = useAuthStore();
   const canEdit = user?.role === 'MANAGER' || user?.role === 'TECHNICIAN';
 
-  const { data, isLoading } = useDevices({ types: 'LAPTOP,DESKTOP,OTHER', statuses: 'ASSIGNED,LOST,STOLEN' });
+  const { data, isLoading } = useDevices({ types: 'LAPTOP,DESKTOP,THIN_CLIENT,LAB_WORKSTATION,SMARTPHONE,TABLET,MONITOR,OTHER', statuses: 'ASSIGNED,LOST,STOLEN' });
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing,  setEditing]  = useState<Device | null>(null);

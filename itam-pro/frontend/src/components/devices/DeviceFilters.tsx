@@ -6,8 +6,8 @@ import { useDeviceStore } from '../../stores/deviceStore';
 import { DEVICE_TYPE_LABELS, DEVICE_STATUS_LABELS } from '../../utils/formatters';
 import type { DeviceType, DeviceStatus } from '../../types';
 
-// Utilisateurs page : uniquement les types poste de travail
-const WORKSTATION_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'OTHER'];
+// Utilisateurs page : postes de travail + téléphones + écrans
+const WORKSTATION_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION', 'SMARTPHONE', 'TABLET', 'MONITOR', 'OTHER'];
 // Utilisateurs page : uniquement les statuts visibles (Actif, Perdu, Volé)
 const USER_STATUSES: DeviceStatus[] = ['ASSIGNED', 'LOST', 'STOLEN'];
 

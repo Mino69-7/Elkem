@@ -9,7 +9,7 @@ export const deviceSchema = z.object({
   serialNumber: z
     .string()
     .min(1, 'Le numéro de série est requis'),
-  type: z.enum(['LAPTOP','DESKTOP','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
+  type: z.enum(['LAPTOP','DESKTOP','THIN_CLIENT','LAB_WORKSTATION','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
   brand: z.string().min(1, 'La marque est requise'),
   model: z.string().min(1, 'Le modèle est requis'),
   processor: z.string().optional(),

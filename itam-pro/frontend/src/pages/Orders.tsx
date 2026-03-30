@@ -661,16 +661,15 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
   const handleSaveModel = () => {
     if (!modelForm.name || !modelForm.type || !modelForm.brand) return;
     const t = modelForm.type as DeviceType;
-    const isLaptop       = t === 'LAPTOP';
-    const hasStorage     = ['LAPTOP', 'SMARTPHONE', 'TABLET'].includes(t);
+    const hasSpecs = ['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'].includes(t);
     const payload = {
       name:       modelForm.name,
       type:       t,
       brand:      modelForm.brand,
-      processor:  isLaptop   ? modelForm.processor  || undefined : undefined,
-      ram:        isLaptop   ? modelForm.ram        || undefined : undefined,
-      storage:    hasStorage ? modelForm.storage    || undefined : undefined,
-      screenSize: isLaptop   ? modelForm.screenSize || undefined : undefined,
+      processor:  hasSpecs ? modelForm.processor  || undefined : undefined,
+      ram:        hasSpecs ? modelForm.ram        || undefined : undefined,
+      storage:    hasSpecs ? modelForm.storage    || undefined : undefined,
+      screenSize: hasSpecs ? modelForm.screenSize || undefined : undefined,
       notes:      modelForm.notes || undefined,
     };
     if (editingModel) updateModelMut.mutate({ id: editingModel.id, data: payload });
@@ -769,15 +768,14 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                     value={modelForm.type}
                     onChange={(v) => {
                       const next = v as DeviceType;
-                      const isLaptop   = next === 'LAPTOP';
-                      const hasStorage = ['LAPTOP', 'SMARTPHONE', 'TABLET'].includes(next);
+                      const hasSpecs = ['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'].includes(next);
                       setModelForm((s) => ({
                         ...s,
                         type:       next,
-                        processor:  isLaptop   ? s.processor  : '',
-                        ram:        isLaptop   ? s.ram        : '',
-                        screenSize: isLaptop   ? s.screenSize : '',
-                        storage:    hasStorage ? s.storage    : '',
+                        processor:  hasSpecs ? s.processor  : '',
+                        ram:        hasSpecs ? s.ram        : '',
+                        storage:    hasSpecs ? s.storage    : '',
+                        screenSize: hasSpecs ? s.screenSize : '',
                       }));
                     }}
                     options={TYPE_OPTIONS}
@@ -793,8 +791,8 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                   <label className="text-xs text-[var(--text-muted)]">Nom du modèle *</label>
                   <input value={modelForm.name} onChange={(e) => setModelForm((s) => ({ ...s, name: e.target.value }))} placeholder="iPhone 17 Pro, Latitude 5460, UltraSharp 27…" className="input-glass py-2 text-sm" />
                 </div>
-                {/* Specs conditionnelles selon le type */}
-                {modelForm.type === 'LAPTOP' && (
+                {/* Specs conditionnelles — LAPTOP, PC Fixe, PC Labo uniquement */}
+                {['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'].includes(modelForm.type) && (
                   <>
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-[var(--text-muted)]">Processeur / Puce</label>
@@ -804,19 +802,15 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                       <label className="text-xs text-[var(--text-muted)]">RAM</label>
                       <input value={modelForm.ram} onChange={(e) => setModelForm((s) => ({ ...s, ram: e.target.value }))} placeholder="16 Go DDR4, 32 Go DDR5…" className="input-glass py-2 text-sm" />
                     </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-[var(--text-muted)]">Stockage</label>
+                      <input value={modelForm.storage} onChange={(e) => setModelForm((s) => ({ ...s, storage: e.target.value }))} placeholder="256 Go SSD, 512 Go NVMe…" className="input-glass py-2 text-sm" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-[var(--text-muted)]">Taille écran</label>
+                      <input value={modelForm.screenSize} onChange={(e) => setModelForm((s) => ({ ...s, screenSize: e.target.value }))} placeholder='14", 15.6", 27"…' className="input-glass py-2 text-sm" />
+                    </div>
                   </>
-                )}
-                {['LAPTOP', 'SMARTPHONE', 'TABLET'].includes(modelForm.type) && (
-                  <div className={clsx('flex flex-col gap-1', modelForm.type !== 'LAPTOP' && 'col-span-2')}>
-                    <label className="text-xs text-[var(--text-muted)]">Stockage</label>
-                    <input value={modelForm.storage} onChange={(e) => setModelForm((s) => ({ ...s, storage: e.target.value }))} placeholder="256 Go SSD, 512 Go NVMe, 128 Go…" className="input-glass py-2 text-sm" />
-                  </div>
-                )}
-                {modelForm.type === 'LAPTOP' && (
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[var(--text-muted)]">Taille écran</label>
-                    <input value={modelForm.screenSize} onChange={(e) => setModelForm((s) => ({ ...s, screenSize: e.target.value }))} placeholder='14", 15.6"…' className="input-glass py-2 text-sm" />
-                  </div>
                 )}
               </div>
               <div className="flex gap-2 mt-3">

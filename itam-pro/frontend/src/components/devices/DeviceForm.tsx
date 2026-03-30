@@ -50,7 +50,7 @@ const WORKSTATION_TYPES = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT'];
 const LAB_TYPE = 'LAB_WORKSTATION';
 const ALL_WS_TYPES = [...WORKSTATION_TYPES, LAB_TYPE];
 const HAS_KEYBOARD_LAYOUT = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
-const HAS_SPECS = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION', 'SMARTPHONE', 'TABLET'];
+const HAS_SPECS = ['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'];
 
 // Préfixes hostname par site (format : {PREFIX}-W-{SN})
 const SITE_HOSTNAME_PREFIX: Record<string, string> = {
@@ -530,8 +530,8 @@ export default function DeviceForm({
             </section>
           )}
 
-          {/* ── 4. Spécifications ── */}
-          {selectedType && (
+          {/* ── 4. Spécifications — visible uniquement si le type a des specs ou un clavier ── */}
+          {selectedType && (HAS_SPECS.includes(selectedType) || HAS_KEYBOARD_LAYOUT.includes(selectedType)) && (
             <section>
               <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Spécifications</h3>
               <div className="grid grid-cols-2 gap-3">
