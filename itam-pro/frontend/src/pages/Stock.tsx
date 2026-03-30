@@ -6,7 +6,7 @@ import {
   Plus, Package, ShoppingCart, AlertTriangle, CheckCircle,
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Cpu, MemoryStick, HardDrive,
-  Trash2, LayoutGrid, List, ArrowLeft,
+  Trash2, LayoutGrid, List, ArrowLeft, Tv, Server,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -39,13 +39,13 @@ interface ModelStock {
 // ─── Icônes par type ──────────────────────────────────────────
 
 const TYPE_ICONS: Record<DeviceType, React.ComponentType<{ size?: number; className?: string }>> = {
-  LAPTOP: Laptop, DESKTOP: Monitor, SMARTPHONE: Smartphone, TABLET: Tablet,
-  MONITOR: Monitor, KEYBOARD: Keyboard, MOUSE: Mouse, HEADSET: Headphones,
-  DOCKING_STATION: Layers, PRINTER: Printer, OTHER: HelpCircle,
+  LAPTOP: Laptop, DESKTOP: Monitor, THIN_CLIENT: Tv, LAB_WORKSTATION: Server,
+  SMARTPHONE: Smartphone, TABLET: Tablet, MONITOR: Monitor, KEYBOARD: Keyboard,
+  MOUSE: Mouse, HEADSET: Headphones, DOCKING_STATION: Layers, PRINTER: Printer, OTHER: HelpCircle,
 };
 
 const TYPE_ORDER: DeviceType[] = [
-  'LAPTOP', 'DESKTOP', 'SMARTPHONE', 'TABLET', 'PRINTER',
+  'LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION', 'SMARTPHONE', 'TABLET', 'PRINTER',
   'MONITOR', 'KEYBOARD', 'MOUSE', 'HEADSET', 'DOCKING_STATION', 'OTHER',
 ];
 

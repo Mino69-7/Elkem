@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Pencil, Trash2, UserRound,
+  Tv, Server,
 } from 'lucide-react';
 import { StatusBadge } from '../ui/StatusBadge';
 import { DEVICE_TYPE_LABELS } from '../../utils/formatters';
@@ -11,6 +12,8 @@ import type { Device, DeviceType } from '../../types';
 const TYPE_ICONS: Record<DeviceType, React.ComponentType<{ size?: number; className?: string }>> = {
   LAPTOP:          Laptop,
   DESKTOP:         Monitor,
+  THIN_CLIENT:     Tv,
+  LAB_WORKSTATION: Server,
   SMARTPHONE:      Smartphone,
   TABLET:          Tablet,
   MONITOR:         Monitor,

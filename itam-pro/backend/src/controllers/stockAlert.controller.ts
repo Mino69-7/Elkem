@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 
 const alertSchema = z.object({
-  deviceType: z.enum(['LAPTOP','DESKTOP','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
+  deviceType: z.enum(['LAPTOP','DESKTOP','THIN_CLIENT','LAB_WORKSTATION','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
   threshold:  z.number().int().min(0).max(999),
   isActive:   z.boolean().default(true),
 });

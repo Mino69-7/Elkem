@@ -8,6 +8,7 @@ import {
   X, Save, Package, Bell, Pencil, Trash2, History, User,
   Laptop, Monitor, Smartphone, Tablet, Printer,
   Keyboard, Mouse, Headphones, Layers, HelpCircle, GripVertical,
+  Tv, Server,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { GlassCard } from '../components/ui/GlassCard';
@@ -34,8 +35,8 @@ interface StockAlertRow {
 // ─── Icônes ───────────────────────────────────────────────────
 
 const TYPE_ICONS: Record<DeviceType, React.ComponentType<{ size?: number; className?: string }>> = {
-  LAPTOP: Laptop, DESKTOP: Monitor, SMARTPHONE: Smartphone,
-  TABLET: Tablet, MONITOR: Monitor, KEYBOARD: Keyboard,
+  LAPTOP: Laptop, DESKTOP: Monitor, THIN_CLIENT: Tv, LAB_WORKSTATION: Server,
+  SMARTPHONE: Smartphone, TABLET: Tablet, MONITOR: Monitor, KEYBOARD: Keyboard,
   MOUSE: Mouse, HEADSET: Headphones, DOCKING_STATION: Layers,
   PRINTER: Printer, OTHER: HelpCircle,
 };
