@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus, LayoutGrid, LayoutList, ChevronLeft, ChevronRight,
   Laptop, Monitor, Smartphone, Tablet, Cpu, Server, Tv, Printer,
-  X, Loader2,
+  X, Loader2, Shield, ShieldOff,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,8 +15,9 @@ import DeviceTable from '../components/devices/DeviceTable';
 import DeviceCard from '../components/devices/DeviceCard';
 import DeviceForm from '../components/devices/DeviceForm';
 import { GlassCard } from '../components/ui/GlassCard';
+import { AppSelect } from '../components/ui/AppSelect';
 import { UserCombobox } from '../components/ui/UserCombobox';
-import { DEVICE_TYPE_LABELS } from '../utils/formatters';
+import { DEVICE_TYPE_LABELS, ELKEM_SITES } from '../utils/formatters';
 import api from '../services/api';
 import type { Device, DeviceType } from '../types';
 import type { DeviceFormData } from '../services/device.service';
@@ -34,20 +35,98 @@ const TYPE_TABS: { type: DeviceType; label: string; Icon: React.ComponentType<{ 
   { type: 'PRINTER',         label: 'Imprimantes',     Icon: Printer },
 ];
 
+// ─── Constantes hostname ──────────────────────────────────────
+
+const SITE_OPTIONS = ELKEM_SITES.map((s) => ({ value: s.code, label: s.label }));
+
+/** Préfixe pays pour les PC Labo/Indus */
+const LAB_COUNTRY: Record<string, string> = {
+  SUD: 'FR', NORD: 'FR', SFC: 'FR', ROU: 'FR', SSS: 'FR', GLD: 'FR',
+  CAR: 'IT', SPA: 'ES', LEV: 'DE',
+};
+
+/** Préfixe hostname pour les autres postes de travail (SFS-W-SN) */
+const WS_PREFIX: Record<string, string> = {
+  SUD: 'SFS', NORD: 'SFS', SFC: 'SFC', ROU: 'ROU',
+  SSS: 'SSS', GLD: 'GLD', CAR: 'CAR', SPA: 'SPA', LEV: 'LEV',
+};
+
+function buildHostname(type: string, site: string, sn: string, labType: 'LAB' | 'INDUS'): string {
+  const cleanSN = sn.trim().toUpperCase();
+  if (type === 'LAB_WORKSTATION') {
+    const country = LAB_COUNTRY[site] ?? 'FR';
+    return `${country}${labType}${cleanSN}`;
+  }
+  const prefix = WS_PREFIX[site] ?? site;
+  return `${prefix}-W-${cleanSN}`;
+}
+
+const WORKSTATION_TYPES = new Set<DeviceType>(['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION']);
+
 // ─── Modal affectation depuis pool stock ──────────────────────
 
 function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () => void }) {
   const qc        = useQueryClient();
   const typeLabel = DEVICE_TYPE_LABELS[type] ?? type;
   const isPhone   = type === 'SMARTPHONE' || type === 'TABLET';
+  const isWS      = WORKSTATION_TYPES.has(type);
+  const isLab     = type === 'LAB_WORKSTATION';
 
+  // ── Sélection utilisateur ──────────────────────────────────
   const [userId,      setUserId]      = useState('');
   const [userDisplay, setUserDisplay] = useState<string | undefined>(undefined);
-  const [search,      setSearch]      = useState('');
-  const [showDrop,    setShowDrop]    = useState(false);
-  const [selected,    setSelected]    = useState<Device | null>(null);
-  const [ticketRef,   setTicketRef]   = useState('IT-');
 
+  // ── Recherche pool ─────────────────────────────────────────
+  const [search,   setSearch]   = useState('');
+  const [showDrop, setShowDrop] = useState(false);
+  const [selected, setSelected] = useState<Device | null>(null);
+
+  // ── Ticket ────────────────────────────────────────────────
+  const [ticketRef, setTicketRef] = useState('IT-');
+
+  // ── Champs workstation ────────────────────────────────────
+  const [labType,    setLabType]    = useState<'LAB' | 'INDUS'>('LAB');
+  const [site,       setSite]       = useState('SUD');
+  const [hostname,   setHostname]   = useState('');
+  const [vlan,       setVlan]       = useState('');
+  const [ipAddress,  setIpAddress]  = useState('');
+  const [macAddress, setMacAddress] = useState('');
+  const [bitlocker,  setBitlocker]  = useState(false);
+
+  // Auto-calcul hostname quand site / labType / device sélectionné change
+  useEffect(() => {
+    if (selected && isWS) {
+      setHostname(buildHostname(type, site, selected.serialNumber, labType));
+    }
+  }, [site, labType, selected, type, isWS]);
+
+  // Pré-remplissage quand on sélectionne un device du pool
+  const handleSelect = (d: Device) => {
+    setSelected(d);
+    setShowDrop(false);
+    const deviceSite = d.site ?? 'SUD';
+    setSite(deviceSite);
+    if (isLab) {
+      setVlan(d.vlan ?? '');
+      setIpAddress(d.ipAddress ?? '');
+      setMacAddress(d.macAddress ?? '');
+      setBitlocker(d.bitlocker ?? false);
+    }
+  };
+
+  const handleReset = () => {
+    setSelected(null);
+    setSearch('');
+    setTicketRef('IT-');
+    setSite('SUD');
+    setHostname('');
+    setVlan('');
+    setIpAddress('');
+    setMacAddress('');
+    setBitlocker(false);
+  };
+
+  // ── Requête pool ──────────────────────────────────────────
   const { data: pool = [], isFetching } = useQuery<Device[]>({
     queryKey: ['assign-pool', type, search],
     queryFn: async () => {
@@ -58,12 +137,29 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
     staleTime: 0,
   });
 
+  // ── Mutation affectation ──────────────────────────────────
   const assignMut = useMutation({
-    mutationFn: (deviceId: string) =>
-      api.patch(`/devices/${deviceId}/assign`, {
+    mutationFn: async (deviceId: string) => {
+      // 1. Assigner l'utilisateur
+      await api.patch(`/devices/${deviceId}/assign`, {
         userId,
         ...(ticketRef.trim().length > 3 ? { assetTag: ticketRef.trim().toUpperCase() } : {}),
-      }),
+      });
+      // 2. Mettre à jour les champs workstation
+      if (isWS) {
+        const extra: Record<string, unknown> = {
+          site,
+          hostname: hostname.trim() || undefined,
+        };
+        if (isLab) {
+          extra.vlan       = vlan.trim()                     || undefined;
+          extra.ipAddress  = ipAddress.trim()                || undefined;
+          extra.macAddress = macAddress.trim().toUpperCase() || undefined;
+          extra.bitlocker  = bitlocker;
+        }
+        await api.put(`/devices/${deviceId}`, extra);
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['devices'] });
       qc.invalidateQueries({ queryKey: ['stock-summary'] });
@@ -104,7 +200,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
               </button>
             </div>
 
-            {/* Corps */}
+            {/* Corps scrollable */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
               {/* ── Utilisateur ── */}
@@ -127,13 +223,13 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Appareil du stock</p>
 
                 {!selected ? (
+                  /* ── Recherche ── */
                   <div className="relative">
                     <div className="space-y-1">
                       <label className="text-xs text-[var(--text-secondary)]">
-                        {isPhone ? 'Rechercher par SN ou IMEI' : 'Rechercher par numéro de série'}
+                        {isPhone ? 'Rechercher par SN ou IMEI' : 'Numéro de série'}
                       </label>
                       <input
-                        autoFocus={!!userId}
                         value={search}
                         onChange={(e) => { setSearch(e.target.value); setShowDrop(true); }}
                         onFocus={() => setShowDrop(true)}
@@ -159,15 +255,15 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                           pool.map((p) => (
                             <button
                               key={p.id}
-                              onClick={() => { setSelected(p); setShowDrop(false); }}
+                              onClick={() => handleSelect(p)}
                               className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-[var(--border-glass)] last:border-0"
                             >
                               <p className="text-xs font-semibold text-[var(--text-primary)]">{p.brand} {p.model}</p>
                               <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
                                 SN: {p.serialNumber}
-                                {p.imei && ` · IMEI: ${p.imei}`}
+                                {p.imei ? ` · IMEI: ${p.imei}` : ''}
                                 {[p.processor, p.ram, p.storage].filter(Boolean).length > 0 && (
-                                  <span className="not-italic"> · {[p.processor, p.ram, p.storage].filter(Boolean).join(' · ')}</span>
+                                  <span> · {[p.processor, p.ram, p.storage].filter(Boolean).join(' · ')}</span>
                                 )}
                               </p>
                             </button>
@@ -177,8 +273,10 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                     )}
                   </div>
                 ) : (
-                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-                    {/* Carte appareil sélectionné */}
+                  /* ── Device sélectionné ── */
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+
+                    {/* Carte appareil */}
                     <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400 mb-1">Appareil sélectionné</p>
                       <p className="text-sm font-semibold text-[var(--text-primary)]">{selected.brand} {selected.model}</p>
@@ -187,23 +285,136 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                           {[selected.processor, selected.ram, selected.storage].filter(Boolean).join(' · ')}
                         </p>
                       )}
-                      {selected.site && (
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Site : {selected.site}</p>
-                      )}
                     </div>
 
-                    {/* SN en lecture seule */}
+                    {/* SN (lecture seule) */}
                     <div className="space-y-1">
                       <label className="text-xs text-[var(--text-secondary)]">N° de série</label>
-                      <input readOnly value={selected.serialNumber} className="input-glass py-2 text-sm w-full font-mono bg-white/[0.02] cursor-default" />
+                      <input readOnly value={selected.serialNumber}
+                        className="input-glass py-2 text-sm w-full font-mono bg-white/[0.02] cursor-default" />
                     </div>
 
-                    {/* IMEI (smartphones/tablettes) */}
+                    {/* IMEI phones uniquement */}
                     {isPhone && (
                       <div className="space-y-1">
                         <label className="text-xs text-[var(--text-secondary)]">IMEI</label>
-                        <input readOnly value={selected.imei ?? '—'} className="input-glass py-2 text-sm w-full font-mono tracking-widest bg-white/[0.02] cursor-default" />
+                        <input readOnly value={selected.imei ?? '—'}
+                          className="input-glass py-2 text-sm w-full font-mono tracking-widest bg-white/[0.02] cursor-default" />
                       </div>
+                    )}
+
+                    {/* ── Champs workstation ───────────────── */}
+                    {isWS && (
+                      <>
+                        <div className="h-px bg-[var(--border-glass)]" />
+
+                        {/* Toggle Labo / Indus — LAB_WORKSTATION uniquement */}
+                        {isLab && (
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-[var(--text-secondary)]">Type de poste</label>
+                            <div className="flex rounded-xl border border-[var(--border-glass)] overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => setLabType('LAB')}
+                                className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                                  labType === 'LAB'
+                                    ? 'bg-primary/15 text-primary'
+                                    : 'text-[var(--text-muted)] hover:bg-white/5'
+                                }`}
+                              >
+                                Labo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setLabType('INDUS')}
+                                className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                                  labType === 'INDUS'
+                                    ? 'bg-primary/15 text-primary'
+                                    : 'text-[var(--text-muted)] hover:bg-white/5'
+                                }`}
+                              >
+                                Indus
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Site */}
+                        <div className="space-y-1">
+                          <label className="text-xs text-[var(--text-secondary)]">Site <span className="text-red-400">*</span></label>
+                          <AppSelect
+                            value={site}
+                            onChange={(v) => setSite(v)}
+                            options={SITE_OPTIONS}
+                          />
+                        </div>
+
+                        {/* Hostname (auto-calculé, éditable) */}
+                        <div className="space-y-1">
+                          <label className="text-xs text-[var(--text-secondary)]">Hostname</label>
+                          <input
+                            value={hostname}
+                            onChange={(e) => setHostname(e.target.value.toUpperCase())}
+                            placeholder="Auto-calculé…"
+                            className="input-glass py-2 text-sm w-full font-mono uppercase"
+                          />
+                          <p className="text-[10px] text-[var(--text-muted)]">
+                            {isLab
+                              ? `Format : ${LAB_COUNTRY[site] ?? 'FR'}${labType}${selected.serialNumber.trim().toUpperCase()}`
+                              : `Format : ${WS_PREFIX[site] ?? site}-W-${selected.serialNumber.trim().toUpperCase()}`
+                            }
+                          </p>
+                        </div>
+
+                        {/* Champs réseau — LAB uniquement */}
+                        {isLab && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-xs text-[var(--text-secondary)]">VLAN</label>
+                              <input
+                                value={vlan}
+                                onChange={(e) => setVlan(e.target.value)}
+                                placeholder="Ex : VLAN-10"
+                                className="input-glass py-2 text-sm w-full"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs text-[var(--text-secondary)]">Adresse IP</label>
+                              <input
+                                value={ipAddress}
+                                onChange={(e) => setIpAddress(e.target.value)}
+                                placeholder="192.168.1.100"
+                                className="input-glass py-2 text-sm w-full font-mono"
+                              />
+                            </div>
+                            <div className="col-span-2 space-y-1">
+                              <label className="text-xs text-[var(--text-secondary)]">Adresse MAC</label>
+                              <input
+                                value={macAddress}
+                                onChange={(e) => setMacAddress(e.target.value.toUpperCase())}
+                                placeholder="AA:BB:CC:DD:EE:FF"
+                                className="input-glass py-2 text-sm w-full font-mono uppercase"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <button
+                                type="button"
+                                onClick={() => setBitlocker(!bitlocker)}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-colors text-sm font-medium ${
+                                  bitlocker
+                                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                                    : 'border-[var(--border-glass)] text-[var(--text-muted)] hover:bg-white/5'
+                                }`}
+                              >
+                                {bitlocker
+                                  ? <><Shield size={14} /> Bitlocker activé</>
+                                  : <><ShieldOff size={14} /> Bitlocker désactivé</>
+                                }
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* N° ticket */}
@@ -212,7 +423,6 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                         N° ticket <span className="text-red-400">*</span>
                       </label>
                       <input
-                        autoFocus
                         value={ticketRef}
                         onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
                         placeholder="IT-XXXXX"
@@ -221,7 +431,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                     </div>
 
                     <button
-                      onClick={() => { setSelected(null); setSearch(''); setTicketRef('IT-'); }}
+                      onClick={handleReset}
                       className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] underline transition-colors"
                     >
                       Changer d'appareil
@@ -262,16 +472,12 @@ export default function Devices() {
 
   const [activeTab, setActiveTab] = useState<DeviceType>('LAPTOP');
 
-  // L'onglet actif est le filtre principal
   const { data, isLoading } = useDevices({ type: activeTab, statuses: 'ASSIGNED,LOST,STOLEN' });
 
-  // Modal affectation depuis pool
   const [assignOpen, setAssignOpen] = useState(false);
-
-  // DeviceForm édition uniquement
-  const [formOpen, setFormOpen]   = useState(false);
-  const [editing,  setEditing]    = useState<Device | null>(null);
-  const [deleting, setDeleting]   = useState<Device | null>(null);
+  const [formOpen,   setFormOpen]   = useState(false);
+  const [editing,    setEditing]    = useState<Device | null>(null);
+  const [deleting,   setDeleting]   = useState<Device | null>(null);
 
   const updateMut = useUpdateDevice(editing?.id ?? '');
   const deleteMut = useDeleteDevice();
@@ -281,8 +487,8 @@ export default function Devices() {
     setFilters({ type: undefined, model: undefined, page: 1 });
   };
 
-  const openEdit   = (d: Device) => { setEditing(d); setFormOpen(true); };
-  const closeForm  = () => { setFormOpen(false); setEditing(null); };
+  const openEdit  = (d: Device) => { setEditing(d); setFormOpen(true); };
+  const closeForm = () => { setFormOpen(false); setEditing(null); };
 
   const handleSubmit = async (data: DeviceFormData) => {
     if (editing) await updateMut.mutateAsync(data);
@@ -314,7 +520,6 @@ export default function Devices() {
         </div>
 
         <div className="sm:ml-auto flex items-center gap-2">
-          {/* Toggle vue */}
           <div className="flex rounded-xl border border-[var(--border-glass)] overflow-hidden">
             <button
               onClick={() => setViewMode('table')}

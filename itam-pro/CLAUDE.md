@@ -170,12 +170,24 @@ Ordre des entrées dans la sidebar :
 - Si un technicien met un appareil récent en RETIRED → badge ⚠ rouge dans l'onglet Déchets
 - Rien n'est supprimable → tout va en RETIRED dans le pire des cas
 
+### Pool de stock — règle fondamentale (validée 2026-03-31)
+**Aucun appareil ne peut être créé directement depuis la page Utilisateurs.** Tout équipement doit d'abord passer par le flux : Commande → Réception → Pool IN_STOCK → Affectation.
+
 ### Pool Smartphones / Tablettes
 - Téléphones et tablettes réceptionnés via PO entrent dans le pool `IN_STOCK` avec SN + IMEI
 - Dans l'onglet Équipements d'un profil utilisateur → "Affecter" ouvre une **PhoneModal** de recherche dans ce pool
 - Saisir ≥ 2 caractères dans le champ → dropdown progressif filtré par SN ou IMEI depuis `GET /devices?type=SMARTPHONE|TABLET&status=IN_STOCK&search=...`
 - Sélection → `PATCH /devices/:id/assign { userId, assetTag? }` (le device existant est affecté, pas créé)
 - **On ne peut pas inventer un téléphone** — il doit obligatoirement exister dans le pool réceptionné
+
+### Pool Postes de travail (LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION)
+- Même principe : réceptionnés via PO → pool IN_STOCK → affectation
+- **WorkstationModal** (dans `DeviceDetail.tsx`) : recherche SN dès 1 caractère, `GET /devices?type={type}&status=IN_STOCK&search=...`
+- **AssignFromPoolModal** (dans `Devices.tsx`) : même logique depuis le bouton "+ Nouveau" de la page Utilisateurs
+- Après sélection, champs workstation supplémentaires :
+  - **Tous WS** : Site dropdown + Hostname auto-calculé (éditable)
+  - **LAB_WORKSTATION** : Toggle Labo/Indus + VLAN + IP + MAC + Bitlocker
+- Submit en 2 appels : `PATCH /assign { userId, assetTag }` puis `PUT /devices/:id { site, hostname, ... }`
 
 ### Flux statut PurchaseOrder
 ```
@@ -201,13 +213,17 @@ Champs obligatoires : Type + Marque + Nom du modèle.
 | Type | Processeur | RAM | Stockage | Taille écran |
 |---|:---:|:---:|:---:|:---:|
 | PC Portable (LAPTOP) | ✅ | ✅ | ✅ | ✅ |
+| PC Fixe (DESKTOP) | ✅ | ✅ | ✅ | — |
+| PC Labo / Indus (LAB_WORKSTATION) | ✅ | ✅ | ✅ | — |
 | Smartphone / Tablette | — | — | ✅ | — |
 | Tous les autres types | — | — | — | — |
 
+- **Taille écran : uniquement LAPTOP** — ni DESKTOP ni LAB_WORKSTATION n'ont ce champ
 - Quand le type change dans le formulaire, les champs non applicables sont **vidés automatiquement**
 - `handleSaveModel` n'envoie que les valeurs applicables au type (les autres sont `undefined`)
 - La marque n'a pas de valeur par défaut — l'utilisateur saisit librement (Dell, Apple, HP, etc.)
 - **TYPE_OPTIONS dans Orders.tsx** : MOUSE exclu (fusionné avec KEYBOARD sous label "Clavier / Souris")
+- **Suppression de modèle** : bouton Trash2 sur chaque ligne → confirmation inline (`confirmDeleteId` state) → `DELETE /devicemodels/:id` (MANAGER only)
 
 ---
 
@@ -228,22 +244,29 @@ Tous type LAPTOP, brand Dell, screenSize 14" :
 
 ---
 
-## Sites Elkem (référentiel validé — 2026-03-29)
+## Sites Elkem (référentiel validé — 2026-03-31)
 
 Définis dans `frontend/src/utils/formatters.ts` → `ELKEM_SITES`.
-Utilisés dans `DeviceForm.tsx` via `SITE_OPTIONS`.
+Utilisés dans `DeviceForm.tsx` et `Devices.tsx` via `SITE_OPTIONS`.
 
-| Code | Label affiché | Préfixe hostname |
-|---|---|---|
-| SUD *(défaut)* | SUD - Saint-Fons | SFS |
-| NORD | NORD - Saint-Fons | SFS |
-| SFC | SFC - ATRiON | SFC |
-| ROU | ROU - ROUSSILLON | ROU |
-| SSS | SSS - Salaise | SSS |
-| GLD | GLD - KORNER | GLD |
-| CAR | CAR - ITALIE | CAR |
-| SPA | SPA - ESPAGNE | SPA |
-| LEV | LEV - ALLEMAGNE | LEV |
+| Code | Label affiché | Préfixe WS (`{P}-W-{SN}`) | Préfixe Labo/Indus (`{P}LAB{SN}` / `{P}INDUS{SN}`) |
+|---|---|---|---|
+| SUD *(défaut)* | SUD - Saint-Fons | SFS | FR |
+| NORD | NORD - Saint-Fons | SFS | FR |
+| SFC | SFC - ATRiON | SFC | FR |
+| ROU | ROU - ROUSSILLON | ROU | FR |
+| SSS | SSS - Salaise | SSS | FR |
+| GLD | GLD - KORNER | GLD | FR |
+| CAR | CAR - ITALIE | CAR | IT |
+| SPA | SPA - ESPAGNE | SPA | ES |
+| LEV | LEV - ALLEMAGNE | LEV | DE |
+
+**Règles hostname :**
+- LAPTOP / DESKTOP / THIN_CLIENT : `{WS_PREFIX}-W-{SN}` — ex : `SFS-W-ABC1234`
+- LAB_WORKSTATION : `{COUNTRY}{LAB|INDUS}{SN}` — ex : `FRLABABC1234` ou `FRINDUSABC1234`
+  - Toggle "Labo" / "Indus" dans le formulaire détermine LAB vs INDUS
+  - Constantes `WS_PREFIX` et `LAB_COUNTRY` définies dans `Devices.tsx` (module-level)
+  - Même logique dans `DeviceForm.tsx` via `SITE_HOSTNAME_PREFIX`
 
 **Note DB** : les devices avec `site = 'ATRiON'` (ancien code) afficheront la valeur brute. Migration manuelle si nécessaire : `UPDATE "Device" SET site='SFC' WHERE site='ATRiON'`
 
@@ -258,6 +281,7 @@ Utilisés dans `DeviceForm.tsx` via `SITE_OPTIONS`.
 | PATCH | `/api/devices/:id` | TECHNICIAN | Mise à jour — modèle verrouillé si purchaseOrderId |
 | PATCH | `/api/devices/:id/assign` | TECHNICIAN | Assigner à un user — accepte `{ userId, assetTag? }` |
 | GET | `/api/devicemodels/stock-summary` | AUTH | Inventaire par modèle avec compteurs IN_STOCK/ORDERED |
+| DELETE | `/api/devicemodels/:id` | MANAGER | Supprimer un modèle du catalogue |
 | GET | `/api/lookup/serial/:sn` | AUTH | Lookup SN : local → Intune → Dell |
 | GET | `/api/users?search=xxx` | AUTH | Recherche utilisateurs (UserCombobox) |
 | GET | `/api/stats` | AUTH | KPIs dashboard |
@@ -315,9 +339,10 @@ interface DeviceFormProps {
 ### Champs conditionnels par type
 | Types | Champs spécifiques |
 |---|---|
-| LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION | Tag actif (requis), SN, Hostname (auto) |
+| LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION | Tag actif (requis), SN, Hostname (auto), Site |
 | LAB_WORKSTATION uniquement | + VLAN, IP, MAC, Bitlocker |
-| LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION | Clavier, Processeur, RAM, Stockage, Écran |
+| LAPTOP, DESKTOP, LAB_WORKSTATION | Clavier, Processeur, RAM, Stockage |
+| LAPTOP uniquement | + Taille écran |
 | SMARTPHONE, TABLET | Gérés via PhoneModal (pas via DeviceForm) |
 
 ---
@@ -329,7 +354,8 @@ interface DeviceFormProps {
 const WORKSTATION_TYPES:     DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
 const WORKSTATION_CAT_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
 const PHONE_CAT_TYPES:       DeviceType[] = ['SMARTPHONE', 'TABLET'];
-// WORKSTATION_CAT_TYPES → ouvre wsModal (DeviceForm modal=true)
+// WORKSTATION_CAT_TYPES → Ajouter : WorkstationModal (pool stock)
+//                       → Modifier : wsModal + DeviceForm modal=true
 // PHONE_CAT_TYPES       → ouvre PhoneModal
 // autres périphériques  → QuickAddForm inline ou editingDevice (drawer)
 ```
@@ -484,6 +510,75 @@ Les champs Achat, Garantie, Prix, Fournisseur, N° facture, Créé le, Modifié 
 
 ---
 
+### ✅ Phase 13 — Pool stock obligatoire + hostname Labo/Indus (2026-03-31)
+
+#### Règle architecturale fondamentale
+- **Plus aucune création directe depuis la page Utilisateurs** — `useCreateDevice` supprimé de `Devices.tsx`
+- Workflow imposé : Commande → Réception → Pool IN_STOCK → Affectation utilisateur
+- Toutes les pages sont maintenant liées et synchronisées via le pool de stock
+
+#### Catalogue modèles (Orders.tsx) — suppression
+- Bouton **Trash2** sur chaque ligne → confirmation inline (state `confirmDeleteId`)
+- Confirmation : texte "Confirmer ?" + bouton Check (valider) + bouton X (annuler)
+- `deleteModelMut` → `DELETE /devicemodels/:id` → invalide `['device-models-all']` et `['device-models']`
+- **`Check` ajouté aux imports lucide dans Orders.tsx**
+
+#### Champ "Taille écran" restreint à LAPTOP
+- **Orders.tsx** : formulaire catalogue → `screenSize` visible uniquement si `modelForm.type === 'LAPTOP'`
+- **Orders.tsx** : `handleSaveModel` → `screenSize` envoyé uniquement si `t === 'LAPTOP'`
+- **Orders.tsx** : onChange type → `screenSize` préservé uniquement si `next === 'LAPTOP'`
+- **DeviceForm.tsx** : champ "Taille écran" rendu uniquement si `selectedType === 'LAPTOP'`
+
+#### WorkstationModal (DeviceDetail.tsx) — affectation postes de travail depuis onglet Équipements
+- Nouveau composant `WorkstationModal` dans `DeviceDetail.tsx` (juste avant `TabEquipements`)
+- Recherche SN dans pool IN_STOCK **dès le 1er caractère** → `GET /devices?type={type}&status=IN_STOCK&search=...`
+- Dropdown affiche : marque/modèle, SN, specs (processeur/RAM/stockage) si disponibles
+- Sélection → carte verte confirmation + SN readonly + champ ticket IT-XXXXX
+- Validation : `PATCH /devices/:id/assign { userId, assetTag }` → invalide cache stock
+- `wsAssignModal` state ajouté à `TabEquipements` : `{ type: DeviceType } | null`
+- `wsModal` : type changé de `{ device: Device | null }` à `{ device: Device }` (édition seulement)
+- Bouton "Ajouter" workstation → `setWsAssignModal` (plus `setWsModal({ device: null, ... })`)
+- `createEquipMut` supprimé de TabEquipements
+- DeviceForm wsModal conservé **uniquement pour l'édition** des workstations existants
+
+#### AssignFromPoolModal (Devices.tsx) — bouton "+ Nouveau" page Utilisateurs
+- Nouveau composant `AssignFromPoolModal` remplace DeviceForm create dans `Devices.tsx`
+- **UserCombobox** en tête du formulaire (sélection utilisateur obligatoire)
+- Recherche SN depuis 1 caractère → dropdown dynamique pool IN_STOCK
+- **Champs adaptatifs selon le type d'équipement** :
+  - **Téléphones/Tablettes** : IMEI affiché readonly après sélection
+  - **Postes de travail (LAPTOP/DESKTOP/THIN_CLIENT/LAB_WORKSTATION)** :
+    - Site dropdown (SUD par défaut)
+    - Hostname auto-calculé dès sélection device + éditable manuellement
+  - **LAB_WORKSTATION uniquement** :
+    - **Toggle "Labo" / "Indus"** en haut → détermine préfixe hostname
+    - VLAN, Adresse IP, Adresse MAC, Bitlocker toggle (Shield/ShieldOff)
+- Ticket IT-XXXXX obligatoire pour tous les types
+- Submit en 2 appels séquentiels :
+  1. `PATCH /devices/:id/assign { userId, assetTag }`
+  2. (si workstation) `PUT /devices/:id { site, hostname, [vlan, ipAddress, macAddress, bitlocker] }`
+- Invalide : `['devices']`, `['stock-summary']`, `['stock-devices']`, `['stockalerts']`
+- `assignOpen` state dans `Devices()` contrôle l'ouverture
+- DeviceForm conservé dans `Devices.tsx` **uniquement pour l'édition** (`isOpen={formOpen && !!editing}`)
+
+#### Constantes hostname dans Devices.tsx (module-level)
+```typescript
+const WS_PREFIX: Record<string, string> = {
+  SUD: 'SFS', NORD: 'SFS', SFC: 'SFC', ROU: 'ROU',
+  SSS: 'SSS', GLD: 'GLD', CAR: 'CAR', SPA: 'SPA', LEV: 'LEV',
+};
+const LAB_COUNTRY: Record<string, string> = {
+  SUD: 'FR', NORD: 'FR', SFC: 'FR', ROU: 'FR', SSS: 'FR', GLD: 'FR',
+  CAR: 'IT', SPA: 'ES', LEV: 'DE',
+};
+function buildHostname(type, site, sn, labType): string {
+  if (type === 'LAB_WORKSTATION') return `${LAB_COUNTRY[site]}${labType}${sn}`;
+  return `${WS_PREFIX[site]}-W-${sn}`;
+}
+```
+
+---
+
 ## Notes techniques diverses
 - `pnpm dev` depuis la racine lance backend + frontend via `concurrently`
 - Port backend : 3001 (configurable via `PORT` dans `backend/.env`)
@@ -496,10 +591,13 @@ Les champs Achat, Garantie, Prix, Fournisseur, N° facture, Créé le, Modifié 
 - **SITE_HOSTNAME_PREFIX** défini dans `DeviceForm.tsx` (module-level) — SUD/NORD → SFS, SFC → SFC, ROU/SSS/GLD/CAR/SPA/LEV → inchangés
 - **DeviceForm `pendingModelSearch`** : à l'ouverture en édition, `reset()` positionne `modelId=''` + déclenche une recherche `{ brand, model }` → quand les modèles chargent, le bon `modelId` est sélectionné automatiquement. Ne jamais enlever ce mécanisme.
 - **PhoneModal** est un composant indépendant dans `DeviceDetail.tsx` — ne pas fusionner avec `DeviceForm` (logiques très différentes : assign depuis pool vs create)
+- **WorkstationModal** est un composant indépendant dans `DeviceDetail.tsx` — même logique que PhoneModal mais sans IMEI, avec champs réseau pour LAB
+- **AssignFromPoolModal** est dans `Devices.tsx` — version enrichie de WorkstationModal avec UserCombobox en tête
 - **Retrait supprimer/désassigner device Équipements** : devices avec SN préfixé `PERIPH-` ou `MON-` → `DELETE`, vrais devices → `PATCH /unassign` (zéro suppression)
 - **TYPE_ICONS dans DeviceTable et Orders** : toujours inclure THIN_CLIENT et LAB_WORKSTATION — sinon erreur TypeScript sur le Record complet
-- **GET /devices?type=SMARTPHONE&status=IN_STOCK&search=** : utilisé par PhoneModal pour filtrer le pool de téléphones disponibles à l'affectation
+- **GET /devices?type={type}&status=IN_STOCK&search=** : utilisé par PhoneModal, WorkstationModal et AssignFromPoolModal pour filtrer le pool disponible à l'affectation — recherche à partir de 1 caractère (workstations) ou 2 (phones)
 - **Règle invalidation cache** : toute mutation changeant le `status` d'un device DOIT invalider `['stock-summary']`, `['stock-devices']`, `['stockalerts']`
+- **AssignFromPoolModal submit séquentiel** : pour les workstations, toujours 2 appels — `/assign` puis `PUT /:id` pour les champs réseau/site/hostname — ne jamais fusionner en un seul appel car `/assign` a sa logique d'audit séparée
 
 ---
 
