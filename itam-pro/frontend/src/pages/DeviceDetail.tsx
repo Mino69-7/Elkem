@@ -537,6 +537,196 @@ function PhoneModal({
   );
 }
 
+// ─── WorkstationModal (affectation depuis pool stock) ─────────
+
+function WorkstationModal({
+  type, userId, onClose,
+}: {
+  type: DeviceType;
+  userId: string;
+  onClose: () => void;
+}) {
+  const qc        = useQueryClient();
+  const typeLabel = DEVICE_TYPE_LABELS[type] ?? type;
+
+  const [search,       setSearch]       = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selected,     setSelected]     = useState<Device | null>(null);
+  const [ticketRef,    setTicketRef]    = useState('IT-');
+
+  const { data: pool = [], isFetching } = useQuery<Device[]>({
+    queryKey: ['ws-pool', type, search],
+    queryFn:  async () => {
+      const r = await api.get(`/devices?type=${type}&status=IN_STOCK&search=${encodeURIComponent(search)}&limit=20`);
+      return r.data.data as Device[];
+    },
+    enabled: search.length >= 1,
+    staleTime: 0,
+  });
+
+  const assignMut = useMutation({
+    mutationFn: (deviceId: string) => api.patch(`/devices/${deviceId}/assign`, {
+      userId,
+      ...(ticketRef.trim().length > 3 ? { assetTag: ticketRef.trim().toUpperCase() } : {}),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      onClose();
+    },
+  });
+
+  const canSubmit = !!selected && ticketRef.trim().length > 3 && !assignMut.isPending;
+
+  return (
+    <AnimatePresence>
+      <>
+        <motion.div
+          className="fixed inset-0 z-50 bg-black/60"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          onClick={onClose}
+        />
+        <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="w-full max-w-md flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', maxHeight: '90vh' }}
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 38 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* En-tête */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
+              <h2 className="font-semibold text-[var(--text-primary)]">Affecter — {typeLabel}</h2>
+              <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Corps */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {!selected ? (
+                <>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Saisissez le numéro de série du {typeLabel.toLowerCase()} à affecter — les appareils disponibles en stock s'affichent au fur et à mesure.
+                  </p>
+                  <div className="relative">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-[var(--text-secondary)]">Numéro de série</label>
+                      <input
+                        autoFocus
+                        value={search}
+                        onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); }}
+                        onFocus={() => setShowDropdown(true)}
+                        placeholder="Ex : ABC1234…"
+                        className="input-glass py-2 text-sm w-full font-mono"
+                      />
+                    </div>
+                    {showDropdown && search.length >= 1 && (
+                      <div
+                        className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
+                        style={{ background: 'var(--bg-secondary)' }}
+                      >
+                        {isFetching ? (
+                          <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
+                            <Loader2 size={13} className="animate-spin" />
+                            <span className="text-xs">Recherche…</span>
+                          </div>
+                        ) : pool.length === 0 ? (
+                          <div className="px-4 py-3 text-xs text-[var(--text-muted)] text-center">
+                            Aucun {typeLabel.toLowerCase()} disponible en stock
+                          </div>
+                        ) : (
+                          pool.map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => { setSelected(p); setShowDropdown(false); }}
+                              className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-[var(--border-glass)] last:border-0"
+                            >
+                              <p className="text-xs font-semibold text-[var(--text-primary)]">{p.brand} {p.model}</p>
+                              <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
+                                SN: {p.serialNumber}
+                                {[p.processor, p.ram, p.storage].filter(Boolean).join(' · ') && (
+                                  <span> · {[p.processor, p.ram, p.storage].filter(Boolean).join(' · ')}</span>
+                                )}
+                              </p>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400 mb-1">Appareil sélectionné</p>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">{selected.brand} {selected.model}</p>
+                    {[selected.processor, selected.ram, selected.storage].filter(Boolean).length > 0 && (
+                      <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                        {[selected.processor, selected.ram, selected.storage].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                    {selected.site && (
+                      <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Site : {selected.site}</p>
+                    )}
+                    {selected.purchaseOrder?.reference && (
+                      <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Commande : {selected.purchaseOrder.reference}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">N° de série</label>
+                    <input
+                      readOnly
+                      value={selected.serialNumber}
+                      className="input-glass py-2 text-sm w-full font-mono bg-white/[0.02] cursor-default"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">N° ticket <span className="text-red-400">*</span></label>
+                    <input
+                      autoFocus
+                      value={ticketRef}
+                      onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
+                      placeholder="IT-XXXXX"
+                      className="input-glass py-2 text-sm w-full font-mono uppercase"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { setSelected(null); setSearch(''); setTicketRef('IT-'); }}
+                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] underline transition-colors"
+                  >
+                    Changer d'appareil
+                  </button>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Pied */}
+            <div className="flex gap-3 px-5 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
+              <button onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
+              <button
+                onClick={() => selected && assignMut.mutate(selected.id)}
+                disabled={!canSubmit}
+                className="btn-primary flex-1 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {assignMut.isPending && <Loader2 size={14} className="animate-spin" />}
+                Affecter
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      </>
+    </AnimatePresence>
+  );
+}
+
 // ─── Onglet équipements ───────────────────────────────────────
 
 // ─── Types workstation (ouvre la modal pleine) ───────────────
@@ -548,8 +738,10 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [removingId,    setRemovingId]    = useState<string | null>(null);
 
-  // Modal pleine pour les postes de travail
-  const [wsModal, setWsModal] = useState<{ device: Device | null; type: DeviceType } | null>(null);
+  // Modal édition poste de travail (DeviceForm)
+  const [wsModal, setWsModal] = useState<{ device: Device; type: DeviceType } | null>(null);
+  // Modal affectation poste de travail depuis pool (WorkstationModal)
+  const [wsAssignModal, setWsAssignModal] = useState<{ type: DeviceType } | null>(null);
   // Modal pour smartphone / tablette (assign depuis pool)
   const [phoneModal, setPhoneModal] = useState<{ device: Device | null; type: DeviceType } | null>(null);
 
@@ -626,14 +818,6 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
     },
   });
 
-  // Création d'un poste de travail depuis le toggle Équipements
-  const createEquipMut = useMutation({
-    mutationFn: (data: object) => api.post('/devices', data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
-      setWsModal(null);
-    },
-  });
 
   if (isLoading) {
     return (
@@ -820,7 +1004,7 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
                   canEdit && !isAdding && (
                     <button
                       onClick={() => {
-                        if (WORKSTATION_CAT_TYPES.includes(cat.type)) setWsModal({ device: null, type: cat.type });
+                        if (WORKSTATION_CAT_TYPES.includes(cat.type)) setWsAssignModal({ type: cat.type });
                         else if (PHONE_CAT_TYPES.includes(cat.type)) setPhoneModal({ device: null, type: cat.type });
                         else setAddingType(cat.type);
                       }}
@@ -894,30 +1078,29 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
         />
       )}
 
-      {/* Modal pleine pour poste de travail (ajouter ou modifier) */}
-      {canEdit && (
+      {/* Modal édition poste de travail */}
+      {canEdit && wsModal && (
         <DeviceForm
-          device={wsModal?.device ?? null}
-          isOpen={!!wsModal}
-          isSaving={wsModal?.device ? wsUpdateMut.isPending : createEquipMut.isPending}
+          device={wsModal.device}
+          isOpen={true}
+          isSaving={wsUpdateMut.isPending}
           isManager={isManager}
           modal={true}
           hideUserField={true}
           forcedUserId={userId}
-          initialType={wsModal?.type}
-          formTitle={
-            wsModal?.device
-              ? `Modifier — ${wsModal.device.brand} ${wsModal.device.model}`
-              : wsModal ? `Ajouter — ${DEVICE_TYPE_LABELS[wsModal.type]}` : undefined
-          }
+          initialType={wsModal.type}
+          formTitle={`Modifier — ${wsModal.device.brand} ${wsModal.device.model}`}
           onClose={() => setWsModal(null)}
-          onSubmit={(data) => {
-            if (wsModal?.device) {
-              wsUpdateMut.mutate({ id: wsModal.device.id, data });
-            } else {
-              createEquipMut.mutate({ ...data, status: 'ASSIGNED', assignedUserId: userId });
-            }
-          }}
+          onSubmit={(data) => wsUpdateMut.mutate({ id: wsModal.device.id, data })}
+        />
+      )}
+
+      {/* Modal affectation poste de travail depuis pool stock */}
+      {canEdit && wsAssignModal && (
+        <WorkstationModal
+          type={wsAssignModal.type}
+          userId={userId}
+          onClose={() => setWsAssignModal(null)}
         />
       )}
     </div>

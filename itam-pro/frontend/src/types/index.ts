@@ -196,6 +196,7 @@ export interface DeviceFilters {
   search?: string;
   type?: DeviceType;
   types?: string;        // comma-separated list, e.g. 'LAPTOP,DESKTOP,OTHER'
+  model?: string;        // exact model name filter
   statuses?: string;     // comma-separated list, e.g. 'ASSIGNED,LOST,STOLEN'
   status?: DeviceStatus;
   location?: string;

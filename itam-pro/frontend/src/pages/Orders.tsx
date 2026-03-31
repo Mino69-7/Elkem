@@ -5,7 +5,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   ShoppingCart, Plus, Lock, CheckCircle, Clock, AlertTriangle,
-  X, Save, Package, Bell, Pencil, Trash2, History, User,
+  X, Save, Package, Bell, Pencil, Trash2, Check, History, User,
   Laptop, Monitor, Smartphone, Tablet, Printer,
   Keyboard, Mouse, Headphones, Layers, HelpCircle, GripVertical,
   Tv, Server,
@@ -594,9 +594,10 @@ const emptyModel: ModelFormState = { name: '', type: '', brand: '', processor: '
 function TabCatalogue({ isManager }: { isManager: boolean }) {
   const qc = useQueryClient();
 
-  const [editingModel,   setEditingModel]   = useState<DeviceModel | null>(null);
-  const [modelForm,      setModelForm]      = useState<ModelFormState>(emptyModel);
-  const [showModelForm,  setShowModelForm]  = useState(false);
+  const [editingModel,    setEditingModel]    = useState<DeviceModel | null>(null);
+  const [modelForm,       setModelForm]       = useState<ModelFormState>(emptyModel);
+  const [showModelForm,   setShowModelForm]   = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Drag state
   const [localModels, setLocalModels] = useState<DeviceModel[]>([]);
@@ -623,6 +624,7 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
     create: (d: Partial<DeviceModel>) => api.post<DeviceModel>('/devicemodels', d).then((r) => r.data),
     update: (id: string, d: Partial<DeviceModel>) => api.put<DeviceModel>(`/devicemodels/${id}`, d).then((r) => r.data),
     toggle: (id: string, isActive: boolean) => api.put<DeviceModel>(`/devicemodels/${id}`, { isActive }).then((r) => r.data),
+    delete: (id: string) => api.delete(`/devicemodels/${id}`),
   };
 
   const createModelMut = useMutation({
@@ -649,6 +651,14 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
       console.error('[reorder] Erreur sauvegarde ordre :', err);
     },
   });
+  const deleteModelMut = useMutation({
+    mutationFn: (id: string) => modelsApi.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['device-models-all'] });
+      qc.invalidateQueries({ queryKey: ['device-models'] });
+      setConfirmDeleteId(null);
+    },
+  });
 
   const resetModelForm = () => { setEditingModel(null); setModelForm(emptyModel); setShowModelForm(false); };
 
@@ -669,7 +679,7 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
       processor:  hasSpecs ? modelForm.processor  || undefined : undefined,
       ram:        hasSpecs ? modelForm.ram        || undefined : undefined,
       storage:    hasSpecs ? modelForm.storage    || undefined : undefined,
-      screenSize: hasSpecs ? modelForm.screenSize || undefined : undefined,
+      screenSize: t === 'LAPTOP' ? modelForm.screenSize || undefined : undefined,
       notes:      modelForm.notes || undefined,
     };
     if (editingModel) updateModelMut.mutate({ id: editingModel.id, data: payload });
@@ -775,7 +785,7 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                         processor:  hasSpecs ? s.processor  : '',
                         ram:        hasSpecs ? s.ram        : '',
                         storage:    hasSpecs ? s.storage    : '',
-                        screenSize: hasSpecs ? s.screenSize : '',
+                        screenSize: next === 'LAPTOP' ? s.screenSize : '',
                       }));
                     }}
                     options={TYPE_OPTIONS}
@@ -806,10 +816,12 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                       <label className="text-xs text-[var(--text-muted)]">Stockage</label>
                       <input value={modelForm.storage} onChange={(e) => setModelForm((s) => ({ ...s, storage: e.target.value }))} placeholder="256 Go SSD, 512 Go NVMe…" className="input-glass py-2 text-sm" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-[var(--text-muted)]">Taille écran</label>
-                      <input value={modelForm.screenSize} onChange={(e) => setModelForm((s) => ({ ...s, screenSize: e.target.value }))} placeholder='14", 15.6", 27"…' className="input-glass py-2 text-sm" />
-                    </div>
+                    {modelForm.type === 'LAPTOP' && (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs text-[var(--text-muted)]">Taille écran</label>
+                        <input value={modelForm.screenSize} onChange={(e) => setModelForm((s) => ({ ...s, screenSize: e.target.value }))} placeholder='14", 15.6"…' className="input-glass py-2 text-sm" />
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -882,20 +894,44 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                       </p>
                     </div>
                     <div className="flex gap-1 flex-shrink-0 items-center">
-                      <button
-                        onClick={() => toggleModelMut.mutate({ id: m.id, isActive: !m.isActive })}
-                        className={clsx(
-                          'text-[10px] px-2.5 py-1 rounded-lg font-medium transition-colors',
-                          m.isActive
-                            ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
-                            : 'bg-slate-500/15 text-slate-400 hover:bg-slate-500/25'
-                        )}
-                      >
-                        {m.isActive ? 'Actif' : 'Inactif'}
-                      </button>
-                      <button onClick={() => openEditModel(m)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors">
-                        <Pencil size={12} />
-                      </button>
+                      {confirmDeleteId === m.id ? (
+                        <>
+                          <span className="text-[10px] text-[var(--text-muted)]">Confirmer ?</span>
+                          <button
+                            onClick={() => deleteModelMut.mutate(m.id)}
+                            disabled={deleteModelMut.isPending}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                          >
+                            <Check size={12} />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:bg-white/5 transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => toggleModelMut.mutate({ id: m.id, isActive: !m.isActive })}
+                            className={clsx(
+                              'text-[10px] px-2.5 py-1 rounded-lg font-medium transition-colors',
+                              m.isActive
+                                ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                                : 'bg-slate-500/15 text-slate-400 hover:bg-slate-500/25'
+                            )}
+                          >
+                            {m.isActive ? 'Actif' : 'Inactif'}
+                          </button>
+                          <button onClick={() => openEditModel(m)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors">
+                            <Pencil size={12} />
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(m.id)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                            <Trash2 size={12} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -546,9 +546,11 @@ export default function DeviceForm({
                     <Field label="Stockage">
                       <input {...register('storage')} placeholder="Auto-rempli via modèle" className="input-glass py-2 text-sm" />
                     </Field>
-                    <Field label="Taille écran">
-                      <input {...register('screenSize')} placeholder="Auto-rempli via modèle" className="input-glass py-2 text-sm" />
-                    </Field>
+                    {selectedType === 'LAPTOP' && (
+                      <Field label="Taille écran">
+                        <input {...register('screenSize')} placeholder="Auto-rempli via modèle" className="input-glass py-2 text-sm" />
+                      </Field>
+                    )}
                   </>
                 )}
                 {HAS_KEYBOARD_LAYOUT.includes(selectedType) && (

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import * as Select from '@radix-ui/react-select';
-import { Search, X, ChevronDown, Check, Monitor, Tag, RotateCcw } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Search, X, ChevronDown, Check, Tag, Layers, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useDeviceStore } from '../../stores/deviceStore';
-import { DEVICE_TYPE_LABELS, DEVICE_STATUS_LABELS } from '../../utils/formatters';
-import type { DeviceType, DeviceStatus } from '../../types';
+import { DEVICE_STATUS_LABELS } from '../../utils/formatters';
+import type { DeviceType, DeviceStatus, DeviceModel } from '../../types';
+import api from '../../services/api';
 
-// Utilisateurs page : postes de travail + téléphones + écrans
-const WORKSTATION_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION', 'SMARTPHONE', 'TABLET', 'MONITOR', 'OTHER'];
-// Utilisateurs page : uniquement les statuts visibles (Actif, Perdu, Volé)
+// Utilisateurs page : statuts visibles (Actif, Perdu, Volé)
 const USER_STATUSES: DeviceStatus[] = ['ASSIGNED', 'LOST', 'STOLEN'];
 
 // ─── Filter pill (Radix UI Select, zéro native select) ──────────────────────
@@ -18,9 +18,10 @@ interface FilterPillProps {
   value: string | undefined;
   options: { value: string; label: string }[];
   onChange: (v: string | undefined) => void;
+  disabled?: boolean;
 }
 
-function FilterPill({ icon, label, value, options, onChange }: FilterPillProps) {
+function FilterPill({ icon, label, value, options, onChange, disabled }: FilterPillProps) {
   const isActive = value !== undefined;
   const displayLabel = isActive ? (options.find((o) => o.value === value)?.label ?? label) : label;
 
@@ -28,12 +29,14 @@ function FilterPill({ icon, label, value, options, onChange }: FilterPillProps) 
     <Select.Root
       value={value ?? '__all__'}
       onValueChange={(v) => onChange(v === '__all__' ? undefined : v)}
+      disabled={disabled}
     >
       <Select.Trigger
         className={clsx(
           'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium',
           'transition-all cursor-pointer select-none outline-none',
           'focus-visible:ring-2 focus-visible:ring-indigo-500/40',
+          disabled && 'opacity-40 cursor-not-allowed',
           isActive
             ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-400'
             : 'border-[var(--border-glass)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
@@ -44,7 +47,7 @@ function FilterPill({ icon, label, value, options, onChange }: FilterPillProps) 
           ? <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
           : <span className="text-[var(--text-muted)]">{icon}</span>
         }
-        <span className="max-w-[120px] truncate">{displayLabel}</span>
+        <span className="max-w-[140px] truncate">{displayLabel}</span>
         <Select.Icon>
           <ChevronDown size={10} className="opacity-50 shrink-0" />
         </Select.Icon>
@@ -55,13 +58,13 @@ function FilterPill({ icon, label, value, options, onChange }: FilterPillProps) 
           position="popper"
           sideOffset={6}
           className={clsx(
-            'z-[200] min-w-[160px] overflow-hidden rounded-xl shadow-2xl',
+            'z-[200] min-w-[180px] max-h-64 overflow-hidden rounded-xl shadow-2xl',
             'border border-[var(--border-glass)]',
             'animate-in fade-in-0 zoom-in-95'
           )}
           style={{ background: 'var(--bg-secondary)' }}
         >
-          <Select.Viewport className="p-1">
+          <Select.Viewport className="p-1 overflow-y-auto max-h-60">
             {/* Option "tous" */}
             <Select.Item
               value="__all__"
@@ -108,11 +111,21 @@ function FilterPill({ icon, label, value, options, onChange }: FilterPillProps) 
 // ─── DeviceFilters ───────────────────────────────────────────────────────────
 interface DeviceFiltersProps {
   externalSearch?: string;
+  activeType: DeviceType;
 }
 
-export default function DeviceFilters({ externalSearch }: DeviceFiltersProps) {
+export default function DeviceFilters({ externalSearch, activeType }: DeviceFiltersProps) {
   const { filters, setFilters, resetFilters } = useDeviceStore();
   const [localSearch, setLocalSearch] = useState(filters.search ?? '');
+
+  // Chargement des modèles pour le type actif
+  const { data: models = [] } = useQuery<DeviceModel[]>({
+    queryKey: ['device-models', activeType],
+    queryFn:  () => api.get<DeviceModel[]>(`/devicemodels?type=${activeType}`).then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  const modelOptions = models.map((m) => ({ value: m.name, label: `${m.brand} ${m.name}` }));
 
   useEffect(() => {
     if (externalSearch !== undefined && externalSearch !== localSearch) {
@@ -128,7 +141,7 @@ export default function DeviceFilters({ externalSearch }: DeviceFiltersProps) {
     return () => clearTimeout(timer);
   }, [localSearch]); // eslint-disable-line
 
-  const hasActiveFilters = !!(filters.search || filters.type || filters.status);
+  const hasActiveFilters = !!(filters.search || filters.status || filters.model);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -162,11 +175,12 @@ export default function DeviceFilters({ externalSearch }: DeviceFiltersProps) {
 
       {/* ── Pills filtres ────────────────────────────── */}
       <FilterPill
-        icon={<Monitor size={11} />}
-        label="Type"
-        value={filters.type}
-        options={WORKSTATION_TYPES.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] }))}
-        onChange={(v) => setFilters({ type: v as DeviceType | undefined, page: 1 })}
+        icon={<Layers size={11} />}
+        label="Modèle"
+        value={filters.model}
+        options={modelOptions}
+        onChange={(v) => setFilters({ model: v, page: 1 })}
+        disabled={modelOptions.length === 0}
       />
 
       <FilterPill
