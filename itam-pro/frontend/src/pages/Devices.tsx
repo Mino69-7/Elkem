@@ -482,7 +482,7 @@ export default function Devices() {
 
   const [activeTab, setActiveTab] = useState<DeviceType>('LAPTOP');
 
-  const { data, isLoading } = useDevices({ type: activeTab, statuses: 'ASSIGNED,LOST,STOLEN' });
+  const { data, isLoading } = useDevices({ type: activeTab, assigned: true });
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [formOpen,     setFormOpen]     = useState(false);

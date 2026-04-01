@@ -331,6 +331,7 @@ function PhoneModal({
       qc.invalidateQueries({ queryKey: ['stock-summary'] });
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
       onClose();
     },
   });
@@ -575,6 +576,7 @@ function WorkstationModal({
       qc.invalidateQueries({ queryKey: ['stock-summary'] });
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
       onClose();
     },
   });
@@ -787,6 +789,7 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
         qc.invalidateQueries({ queryKey: ['stock-summary'] });
         qc.invalidateQueries({ queryKey: ['stock-devices'] });
         qc.invalidateQueries({ queryKey: ['stockalerts'] });
+        qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
       }
       setRemovingId(null);
     },

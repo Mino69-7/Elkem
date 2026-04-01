@@ -6,7 +6,7 @@ import {
   Plus, Package, ShoppingCart, AlertTriangle, CheckCircle,
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Cpu, MemoryStick, HardDrive,
-  Trash2, LayoutGrid, List, ArrowLeft, Tv, Server,
+  Trash2, LayoutGrid, List, ArrowLeft, Tv, Server, Wrench,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -67,10 +67,11 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
   const { data: stockDevices, isLoading: loadingDevices } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['stock-devices'],
     queryFn:  async () => {
-      const { data } = await api.get('/devices?status=IN_STOCK&limit=200&sortBy=createdAt&sortOrder=desc');
+      const { data } = await api.get('/devices?status=IN_STOCK&limit=200&sortBy=updatedAt&sortOrder=desc');
       return data;
     },
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
   const { data: orderedDevices } = useQuery<{ data: Device[]; total: number }>({
@@ -452,6 +453,63 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
         </div>
       )}
 
+      {/* ─── Liste individuelle appareils en stock ───────────── */}
+      {!loadingDevices && (stockDevices?.data ?? []).length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Package size={14} className="text-[var(--text-muted)]" />
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
+              Appareils disponibles ({(stockDevices?.data ?? []).length})
+            </h2>
+          </div>
+          <GlassCard padding="none">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border-glass)]">
+                    {['Tag IT', 'Modèle', 'N° Série', 'Site', 'Depuis'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
+                    ))}
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(stockDevices?.data ?? []).map((device, i) => (
+                    <motion.tr
+                      key={device.id}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      onClick={() => goToDevice(device.id)}
+                      className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
+                        {device.assetTag ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
+                        {device.brand} {device.model}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
+                        {device.serialNumber}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                        {device.site ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                        {device.updatedAt ? formatDate(device.updatedAt) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] text-primary">Détail →</span>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
       {/* ─── Formulaire réception ────────────────────────────── */}
       <DeviceForm
         device={null}
@@ -472,10 +530,11 @@ function TabDechets() {
   const { data: retiredDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['retired-devices'],
     queryFn: async () => {
-      const { data } = await api.get('/devices?statuses=RETIRED,LOST,STOLEN&limit=200&sortBy=retiredAt&sortOrder=desc');
+      const { data } = await api.get('/devices?statuses=RETIRED,LOST,STOLEN&limit=200&sortBy=updatedAt&sortOrder=desc');
       return data;
     },
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
   const devices = retiredDevices?.data ?? [];
@@ -577,6 +636,98 @@ function TabDechets() {
   );
 }
 
+// ─── Onglet Maintenance ───────────────────────────────────────
+
+function TabMaintenance() {
+  const navigate = useNavigate();
+
+  const { data: maintDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
+    queryKey: ['maintenance-devices'],
+    queryFn: async () => {
+      const { data } = await api.get('/devices?status=IN_MAINTENANCE&limit=200&sortBy=updatedAt&sortOrder=desc');
+      return data;
+    },
+    staleTime: 0,
+    refetchOnMount: true,
+  });
+
+  const devices = maintDevices?.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Wrench size={16} className="text-[var(--text-muted)]" />
+        <h2 className="text-sm font-semibold text-[var(--text-secondary)]">
+          Appareils en maintenance ({devices.length})
+        </h2>
+      </div>
+
+      {isLoading ? (
+        <GlassCard padding="none">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="px-4 py-3 border-b border-[var(--border-glass)]">
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ))}
+        </GlassCard>
+      ) : devices.length === 0 ? (
+        <GlassCard padding="md" className="text-center py-12">
+          <Wrench size={32} className="mx-auto mb-3 text-[var(--text-muted)] opacity-30" />
+          <p className="text-sm text-[var(--text-muted)]">Aucun appareil en maintenance</p>
+        </GlassCard>
+      ) : (
+        <GlassCard padding="none">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border-glass)]">
+                  {['Tag IT', 'N° Série', 'Modèle', 'Utilisateur', 'Site', 'Modifié le', ''].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map((device, i) => (
+                  <motion.tr
+                    key={device.id}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.02 }}
+                    onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock' } })}
+                    className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
+                      {device.assetTag ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
+                      {device.serialNumber}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
+                      {device.brand} {device.model}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                      {device.assignedUser?.displayName ?? <span className="italic">Non assigné</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                      {device.site ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                      {formatDate(device.updatedAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-[10px] text-primary">Historique →</span>
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
+      )}
+    </div>
+  );
+}
+
 // ─── Composant principal ──────────────────────────────────────
 
 export default function Stock() {
@@ -605,8 +756,9 @@ export default function Stock() {
       <Tabs.Root defaultValue="inventaire">
         <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] bg-white/[0.02] w-fit mb-6">
           {[
-            { value: 'inventaire', label: 'Inventaire' },
-            { value: 'dechets',    label: 'Déchets' },
+            { value: 'inventaire',  label: 'Inventaire' },
+            { value: 'maintenance', label: 'Maintenance' },
+            { value: 'dechets',     label: 'Déchets' },
           ].map((tab) => (
             <Tabs.Trigger
               key={tab.value}
@@ -624,6 +776,9 @@ export default function Stock() {
 
         <Tabs.Content value="inventaire">
           <TabInventaire formOpen={formOpen} setFormOpen={setFormOpen} />
+        </Tabs.Content>
+        <Tabs.Content value="maintenance">
+          <TabMaintenance />
         </Tabs.Content>
         <Tabs.Content value="dechets">
           <TabDechets />

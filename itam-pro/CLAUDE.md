@@ -126,9 +126,10 @@ backend/src/
 
 | Page | Contenu | Statuts / Données |
 |---|---|---|
-| **Stock** › Inventaire | Pool de matériel disponible par modèle | IN_STOCK, ORDERED |
-| **Stock** › Déchets | Appareils retirés du parc | RETIRED (badge ⚠ Récent si via PO < 180j) |
-| **Utilisateurs** (/devices) | Master registry du parc déployé | ASSIGNED, PENDING_RETURN, IN_MAINTENANCE, LOANER, LOST, STOLEN, RETIRED |
+| **Stock** › Inventaire | Pool de matériel disponible par modèle + liste individuelle | IN_STOCK, ORDERED |
+| **Stock** › Maintenance | Appareils en maintenance (avec ou sans utilisateur assigné) | IN_MAINTENANCE |
+| **Stock** › Déchets | Appareils retirés du parc | RETIRED, LOST, STOLEN (badge ⚠ Récent si via PO < 180j) |
+| **Utilisateurs** (/devices) | Appareils avec utilisateur réellement affecté (`assigned=true`) | Tous statuts avec `assignedUserId NOT NULL` |
 | **Commandes** › Commandes | Bons de commande actifs (PENDING/PARTIAL) | PurchaseOrder |
 | **Commandes** › Historique | Toutes les commandes tous statuts + manager | PurchaseOrder (tous) |
 | **Commandes** › Catalogue | CRUD modèles DeviceModel (MANAGER) | — |
@@ -276,10 +277,15 @@ Utilisés dans `DeviceForm.tsx` et `Devices.tsx` via `SITE_OPTIONS`.
 
 | Méthode | Route | Rôle requis | Description |
 |---|---|---|---|
-| GET | `/api/devices?excludeStock=true` | AUTH | Liste appareils hors stock (page Utilisateurs) |
-| GET | `/api/devices?status=IN_STOCK` | AUTH | Appareils en stock (page Stock) |
-| PATCH | `/api/devices/:id` | TECHNICIAN | Mise à jour — modèle verrouillé si purchaseOrderId |
+| GET | `/api/devices?assigned=true` | AUTH | Appareils avec utilisateur affecté (page Utilisateurs) |
+| GET | `/api/devices?status=IN_STOCK` | AUTH | Appareils en stock (Stock › Inventaire) |
+| GET | `/api/devices?status=IN_MAINTENANCE` | AUTH | Appareils en maintenance (Stock › Maintenance) |
+| GET | `/api/devices?statuses=RETIRED,LOST,STOLEN` | AUTH | Appareils hors service (Stock › Déchets) |
+| PUT | `/api/devices/:id` | TECHNICIAN | Mise à jour complète |
+| PATCH | `/api/devices/:id` | TECHNICIAN | Mise à jour partielle — modèle verrouillé si purchaseOrderId |
 | PATCH | `/api/devices/:id/assign` | TECHNICIAN | Assigner à un user — accepte `{ userId, assetTag? }` |
+| PATCH | `/api/devices/:id/unassign` | TECHNICIAN | Désassigner → status IN_STOCK + audit UNASSIGNED |
+| DELETE | `/api/devices/:id` body `{ status }` | TECHNICIAN | Soft-retire : status IN_STOCK\|RETIRED\|LOST\|STOLEN — jamais supprimé |
 | GET | `/api/devicemodels/stock-summary` | AUTH | Inventaire par modèle avec compteurs IN_STOCK/ORDERED |
 | DELETE | `/api/devicemodels/:id` | MANAGER | Supprimer un modèle du catalogue |
 | GET | `/api/lookup/serial/:sn` | AUTH | Lookup SN : local → Intune → Dell |
@@ -401,6 +407,7 @@ Chaque équipement doit avoir un ticket associé, stocké dans `device.assetTag`
 - Site (= localisation)
 - Affectation (avatar + nom + email) ou "Non assigné"
 - Depuis (date d'assignation)
+- **Notes** (section dédiée, éditable via le formulaire)
 - ~~État (condition)~~ → supprimé
 - ~~Localisation~~ → supprimé (remplacé par Site)
 
@@ -471,7 +478,7 @@ Les champs Achat, Garantie, Prix, Fournisseur, N° facture, Créé le, Modifié 
 ### ✅ Phase 10 — Corrections stock & formulaire smartphone (2026-03-27)
 - PhoneModal : SN + IMEI affichés en read-only après sélection, bouton "Changer"
 - Backend : recherche par IMEI dans le pool (`listDevices`)
-- Synchronisation invalidation cache : toute mutation qui change le `status` d'un device DOIT invalider `['stock-summary']`, `['stock-devices']`, `['stockalerts']`
+- Synchronisation invalidation cache : toute mutation qui change le `status` d'un device DOIT invalider `['stock-summary']`, `['stock-devices']`, `['stockalerts']`, `['maintenance-devices']`
 - DeviceTable : ligne entière cliquable (`<tr onClick>` + `e.stopPropagation()` sur les boutons)
 
 ### ✅ Phase 11 — Tickets pour tous les équipements (2026-03-28)
@@ -576,6 +583,63 @@ function buildHostname(type, site, sn, labType): string {
   return `${WS_PREFIX[site]}-W-${sn}`;
 }
 ```
+
+### ✅ Phase 14 — Traçabilité, synchronisation & onglet Maintenance (2026-04-01)
+
+#### Système de désaffectation avec choix de destination
+- **Popup "Désaffecter"** dans `Devices.tsx` et `DeviceDetail.tsx` : sélecteur AppSelect avec 4 options :
+  - **Stock** (`IN_STOCK`) — retour inventaire
+  - **Déchet** (`RETIRED`) — mise au rebut
+  - **Perdu** (`LOST`) — signalement perte
+  - **Volé** (`STOLEN`) — signalement vol
+- Hook `useDeleteDevice` signature : `{ id: string; status: string }` (plus `id` seul)
+- Service : `deviceService.retire(id, status)` → `DELETE /devices/:id` avec `{ data: { status } }` (Axios)
+
+#### Backend — soft-retire `deleteDevice`
+- `DELETE /devices/:id` body `{ status }` → valide parmi `['IN_STOCK', 'RETIRED', 'LOST', 'STOLEN']`
+- Efface `assignedUserId` et `assignedAt` dans tous les cas (désaffectation)
+- Pose `retiredAt` uniquement pour RETIRED, LOST, STOLEN
+- Crée 2 audits si l'appareil était assigné : `UNASSIGNED` + `STATUS_CHANGED`
+- Crée 1 audit si non assigné : `STATUS_CHANGED` uniquement
+- `DELETE /devices/:id/unassign` → `PATCH /devices/:id/unassign` → `IN_STOCK` + audit `UNASSIGNED`
+- Permissions : TECHNICIAN + MANAGER (plus MANAGER uniquement)
+
+#### Page Utilisateurs (/devices) — filtre corrigé
+- **Filtre** : `useDevices({ type: activeTab, assigned: true })` → `GET /devices?assigned=true&type=...`
+- Avant : `statuses: 'ASSIGNED,LOST,STOLEN'` → causait l'apparition de devices sans utilisateur
+- Désormais : seuls les appareils avec `assignedUserId NOT NULL` s'affichent, quel que soit leur statut
+
+#### Stock — trois onglets
+- **Inventaire** : pool IN_STOCK par modèle + table individuelle "Appareils disponibles" (triée `updatedAt` desc) — visibilité immédiate après retour en stock
+- **Maintenance** : nouveauté — tous les appareils `IN_MAINTENANCE`, avec colonne Utilisateur ("Non assigné" si sans user), cliquable vers DeviceDetail + historique
+- **Déchets** : RETIRED + LOST + STOLEN (tous trois, plus seulement RETIRED)
+  - Colonne "Statut" avec badges colorés : Déchet / Perdu / Volé
+  - Badge ⚠ Récent si `retiredAt < 180j` ET lié à un PO
+
+#### Cache — clés TanStack Query à invalider
+| Clé | Contenu |
+|---|---|
+| `['devices']` | Liste paginée (page Utilisateurs) |
+| `['device', id]` | Détail d'un appareil |
+| `['stock-summary']` | Compteurs IN_STOCK/ORDERED par modèle |
+| `['stock-devices']` | Tous les appareils IN_STOCK |
+| `['ordered-devices']` | Appareils ORDERED |
+| `['retired-devices']` | Appareils RETIRED/LOST/STOLEN |
+| `['maintenance-devices']` | Appareils IN_MAINTENANCE |
+| `['stockalerts']` | Alertes seuil stock |
+
+Toutes les queries Stock ont `staleTime: 0` + `refetchOnMount: true` pour fraîcheur immédiate.
+
+#### Navigation & transitions de pages
+- **JAMAIS d'`AnimatePresence` sur les routes** → écran noir garanti avec lazy loading
+- Pattern validé dans `AppShell.tsx` : `motion.div` avec `key={location.pathname}` uniquement — pas d'`AnimatePresence` wrappant les routes
+- `AnimatePresence` conservé uniquement pour les drawers/modaux à position fixe
+
+#### Notes — sauvegarde correcte
+- `DeviceForm.tsx` : `notes: values.notes ?? ''` (jamais `|| undefined`) — sinon une note vide ne s'enregistre pas (Prisma ignore `undefined`)
+
+#### Seed — données de test supprimées
+- `backend/prisma/seed.ts` : aucun device créé dans le seed — uniquement les 3 comptes utilisateurs IT
 
 ---
 
