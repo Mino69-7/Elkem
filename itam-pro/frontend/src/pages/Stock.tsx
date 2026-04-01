@@ -472,7 +472,7 @@ function TabDechets() {
   const { data: retiredDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['retired-devices'],
     queryFn: async () => {
-      const { data } = await api.get('/devices?status=RETIRED&limit=200&sortBy=retiredAt&sortOrder=desc');
+      const { data } = await api.get('/devices?statuses=RETIRED,LOST,STOLEN&limit=200&sortBy=retiredAt&sortOrder=desc');
       return data;
     },
     staleTime: 30_000,
@@ -482,12 +482,18 @@ function TabDechets() {
   const now = Date.now();
   const SIX_MONTHS_MS = 180 * 24 * 60 * 60 * 1000;
 
+  const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+    RETIRED: { label: 'Déchet',  cls: 'bg-zinc-500/20 text-zinc-400' },
+    LOST:    { label: 'Perdu',   cls: 'bg-red-500/15 text-red-400' },
+    STOLEN:  { label: 'Volé',    cls: 'bg-purple-500/15 text-purple-400' },
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Trash2 size={16} className="text-[var(--text-muted)]" />
         <h2 className="text-sm font-semibold text-[var(--text-secondary)]">
-          Appareils retirés ({devices.length})
+          Appareils hors service ({devices.length})
         </h2>
       </div>
 
@@ -502,7 +508,7 @@ function TabDechets() {
       ) : devices.length === 0 ? (
         <GlassCard padding="md" className="text-center py-12">
           <Trash2 size={32} className="mx-auto mb-3 text-[var(--text-muted)] opacity-30" />
-          <p className="text-sm text-[var(--text-muted)]">Aucun appareil retiré</p>
+          <p className="text-sm text-[var(--text-muted)]">Aucun appareil hors service</p>
         </GlassCard>
       ) : (
         <GlassCard padding="none">
@@ -510,7 +516,7 @@ function TabDechets() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-glass)]">
-                  {['Tag IT', 'N° Série', 'Modèle', 'Date retrait', 'Alerte', ''].map((h) => (
+                  {['Tag IT', 'N° Série', 'Modèle', 'Statut', 'Date sortie', 'Alerte', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
                   ))}
                 </tr>
@@ -519,6 +525,7 @@ function TabDechets() {
                 {devices.map((device, i) => {
                   const retiredAt = device.retiredAt ? new Date(device.retiredAt).getTime() : null;
                   const isRecent = retiredAt !== null && (now - retiredAt) < SIX_MONTHS_MS && !!device.purchaseOrderId;
+                  const badge = STATUS_BADGE[device.status];
                   return (
                     <motion.tr
                       key={device.id}
@@ -537,12 +544,19 @@ function TabDechets() {
                       <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
                         {device.brand} {device.model}
                       </td>
+                      <td className="px-4 py-3">
+                        {badge && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${badge.cls}`}>
+                            {badge.label}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
                         {device.retiredAt ? formatDate(device.retiredAt) : '—'}
                       </td>
                       <td className="px-4 py-3">
                         {isRecent && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/15 text-red-400">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/15 text-orange-400">
                             <AlertTriangle size={10} />
                             Récent
                           </span>

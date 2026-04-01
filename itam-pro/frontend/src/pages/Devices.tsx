@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus, LayoutGrid, LayoutList, ChevronLeft, ChevronRight,
@@ -137,6 +137,16 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
     staleTime: 0,
   });
 
+  // ── Auto-scroll vers la dropdown quand les résultats arrivent ──
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showDrop && !isFetching && bodyRef.current) {
+      requestAnimationFrame(() => {
+        bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
+      });
+    }
+  }, [showDrop, isFetching, pool.length]);
+
   // ── Mutation affectation ──────────────────────────────────
   const assignMut = useMutation({
     mutationFn: async (deviceId: string) => {
@@ -201,7 +211,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
             </div>
 
             {/* Corps scrollable */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            <div ref={bodyRef} className="flex-1 overflow-y-auto p-5 space-y-5">
 
               {/* ── Utilisateur ── */}
               <div className="space-y-1.5">
@@ -475,9 +485,10 @@ export default function Devices() {
   const { data, isLoading } = useDevices({ type: activeTab, statuses: 'ASSIGNED,LOST,STOLEN' });
 
   const [assignOpen, setAssignOpen] = useState(false);
-  const [formOpen,   setFormOpen]   = useState(false);
-  const [editing,    setEditing]    = useState<Device | null>(null);
-  const [deleting,   setDeleting]   = useState<Device | null>(null);
+  const [formOpen,     setFormOpen]     = useState(false);
+  const [editing,      setEditing]      = useState<Device | null>(null);
+  const [deleting,     setDeleting]     = useState<Device | null>(null);
+  const [retireStatus, setRetireStatus] = useState('IN_STOCK');
 
   const updateMut = useUpdateDevice(editing?.id ?? '');
   const deleteMut = useDeleteDevice();
@@ -497,8 +508,9 @@ export default function Devices() {
 
   const handleDeleteConfirm = async () => {
     if (!deleting) return;
-    await deleteMut.mutateAsync(deleting.id);
+    await deleteMut.mutateAsync({ id: deleting.id, status: retireStatus });
     setDeleting(null);
+    setRetireStatus('IN_STOCK');
   };
 
   const devices    = data?.data       ?? [];
@@ -647,34 +659,75 @@ export default function Devices() {
         />
       )}
 
-      {/* ─── Confirmation suppression ────────────────────────── */}
+      {/* ─── Confirmation désaffectation ─────────────────────── */}
       {deleting && (
         <>
           <motion.div
             className="fixed inset-0 z-50 bg-black/60"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            onClick={() => setDeleting(null)}
+            onClick={() => { setDeleting(null); setRetireStatus('IN_STOCK'); }}
           />
           <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
           >
-            <div className="glass-card p-6 max-w-sm w-full space-y-4 pointer-events-auto">
-              <h3 className="font-semibold text-[var(--text-primary)]">Supprimer {deleting.assetTag} ?</h3>
-              <p className="text-sm text-[var(--text-muted)]">
-                Action irréversible. {deleting.brand} {deleting.model} et tout son historique seront supprimés.
+            <div className="glass-card p-6 max-w-sm w-full space-y-5 pointer-events-auto">
+
+              {/* En-tête */}
+              <div>
+                <h3 className="font-semibold text-[var(--text-primary)]">Désaffecter cet équipement</h3>
+                <p className="text-sm text-[var(--text-muted)] mt-1">
+                  <span className="font-mono font-semibold text-[var(--text-primary)]">{deleting.assetTag || deleting.serialNumber}</span>
+                  {' '}— {deleting.brand} {deleting.model}
+                </p>
+                {deleting.assignedUser && (
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    Actuellement affecté à <span className="font-medium text-[var(--text-secondary)]">{deleting.assignedUser.displayName}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Sélecteur de statut — obligatoire */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-widest text-primary">
+                  Nouveau statut <span className="text-red-400">*</span>
+                </label>
+                <AppSelect
+                  value={retireStatus}
+                  onChange={setRetireStatus}
+                  options={[
+                    { value: 'IN_STOCK', label: 'Stock — retour en inventaire' },
+                    { value: 'RETIRED',  label: 'Déchet — mise au rebut' },
+                    { value: 'LOST',     label: 'Perdu — signalement perte' },
+                    { value: 'STOLEN',   label: 'Volé — signalement vol' },
+                  ]}
+                />
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  {retireStatus === 'IN_STOCK' && 'L\'équipement retourne dans le pool de stock disponible.'}
+                  {retireStatus === 'RETIRED'  && 'L\'équipement est mis au rebut et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'LOST'     && 'L\'équipement est signalé perdu et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'STOLEN'   && 'L\'équipement est signalé volé et apparaîtra dans l\'onglet Déchets.'}
+                </p>
+              </div>
+
+              <p className="text-xs text-[var(--text-muted)] border-t border-[var(--border-glass)] pt-3">
+                L'action sera tracée dans l'historique avec votre nom et la date.
               </p>
+
               <div className="flex gap-3">
-                <button onClick={() => setDeleting(null)} className="btn-secondary flex-1 py-2 text-sm">
+                <button
+                  onClick={() => { setDeleting(null); setRetireStatus('IN_STOCK'); }}
+                  className="btn-secondary flex-1 py-2 text-sm"
+                >
                   Annuler
                 </button>
                 <button
                   onClick={handleDeleteConfirm}
                   disabled={deleteMut.isPending}
-                  className="flex-1 py-2 text-sm rounded-xl bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors font-medium disabled:opacity-50"
+                  className="flex-1 py-2 text-sm rounded-xl bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 transition-colors font-medium disabled:opacity-50"
                 >
-                  {deleteMut.isPending ? 'Suppression…' : 'Supprimer'}
+                  {deleteMut.isPending ? 'En cours…' : 'Confirmer'}
                 </button>
               </div>
             </div>

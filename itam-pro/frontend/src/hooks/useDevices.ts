@@ -52,8 +52,14 @@ export function useUpdateDevice(id: string) {
 export function useDeleteDevice() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => deviceService.delete(id),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['devices'] }),
+    mutationFn: ({ id, status }: { id: string; status: string }) => deviceService.retire(id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['retired-devices'] });
+    },
   });
 }
 

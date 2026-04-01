@@ -340,7 +340,7 @@ export default function DeviceForm({
       storage:         values.storage || undefined,
       screenSize:      values.screenSize || undefined,
       keyboardLayout:  values.keyboardLayout,
-      notes:           values.notes || undefined,
+      notes:           values.notes ?? '',
       purchaseOrderId: values.purchaseOrderId || undefined,
       hostname:        values.hostname || undefined,
       vlan:            values.vlan || undefined,

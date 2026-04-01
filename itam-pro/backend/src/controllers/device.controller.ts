@@ -225,17 +225,83 @@ export async function updateDevice(req: Request, res: Response, next: NextFuncti
   }
 }
 
-// ─── Supprimer un appareil ────────────────────────────────────
+// ─── Désaffecter / Archiver un appareil ──────────────────────
+// Aucune suppression réelle — changement de statut + audit trail complet
+
+const RETIRE_STATUS_LABELS: Record<string, string> = {
+  IN_STOCK: 'Stock',
+  RETIRED:  'Déchet',
+  LOST:     'Perdu',
+  STOLEN:   'Volé',
+};
+const ALLOWED_RETIRE_STATUSES = Object.keys(RETIRE_STATUS_LABELS);
 
 export async function deleteDevice(req: Request, res: Response, next: NextFunction) {
   try {
-    const device = await prisma.device.findUnique({ where: { id: req.params.id } });
+    const newStatus: string = (req.body?.status as string) || 'IN_STOCK';
+    if (!ALLOWED_RETIRE_STATUSES.includes(newStatus)) {
+      return res.status(400).json({ message: `Statut invalide. Valeurs acceptées : ${ALLOWED_RETIRE_STATUSES.join(', ')}` });
+    }
+
+    const device = await prisma.device.findUnique({
+      where: { id: req.params.id },
+      include: { assignedUser: { select: { displayName: true, email: true } } },
+    });
     if (!device) return res.status(404).json({ message: 'Appareil introuvable' });
 
-    await prisma.device.delete({ where: { id: device.id } }); // cascade via schema
+    const previousUser = device.assignedUser;
+    const previousStatus = device.status;
 
-    logger.info(`Device deleted: ${device.assetTag} by ${req.currentUser!.email}`);
-    res.status(204).send();
+    // Données de mise à jour
+    const updateData: Record<string, unknown> = {
+      assignedUserId: null,
+      assignedAt:     null,
+      status:         newStatus,
+    };
+    // Horodatage de sortie pour les statuts hors-service
+    if (['RETIRED', 'LOST', 'STOLEN'].includes(newStatus)) {
+      updateData.retiredAt = new Date();
+    }
+
+    const updated = await prisma.device.update({
+      where: { id: device.id },
+      data: updateData,
+      include: { assignedUser: { select: { id: true, displayName: true, email: true, avatar: true } } },
+    });
+
+    const techName = req.currentUser!.displayName ?? req.currentUser!.email;
+    const statusLabel = RETIRE_STATUS_LABELS[newStatus];
+
+    // Log 1 : désaffectation de l'utilisateur
+    if (previousUser) {
+      await prisma.auditLog.create({
+        data: {
+          deviceId:  device.id,
+          userId:    req.currentUser!.id,
+          action:    'UNASSIGNED',
+          oldValue:  previousUser.displayName,
+          comment:   `Désaffecté par ${techName}`,
+          ipAddress: req.ip,
+        },
+      });
+    }
+
+    // Log 2 : changement de statut
+    await prisma.auditLog.create({
+      data: {
+        deviceId:  device.id,
+        userId:    req.currentUser!.id,
+        action:    'STATUS_CHANGED',
+        fieldName: 'status',
+        oldValue:  previousStatus,
+        newValue:  newStatus,
+        comment:   `Statut : ${statusLabel} — par ${techName}`,
+        ipAddress: req.ip,
+      },
+    });
+
+    logger.info(`Device retired: ${device.assetTag} → ${newStatus} by ${req.currentUser!.email}`);
+    res.json(updated);
   } catch (err) {
     next(err);
   }

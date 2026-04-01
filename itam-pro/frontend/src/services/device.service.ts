@@ -62,8 +62,9 @@ export const deviceService = {
     return data;
   },
 
-  async delete(id: string): Promise<void> {
-    await api.delete(`/devices/${id}`);
+  async retire(id: string, status: string): Promise<Device> {
+    const { data } = await api.delete<Device>(`/devices/${id}`, { data: { status } });
+    return data;
   },
 
   async assign(id: string, userId: string): Promise<Device> {
