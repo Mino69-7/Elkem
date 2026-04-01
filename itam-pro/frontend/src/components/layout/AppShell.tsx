@@ -1,9 +1,26 @@
 import { Outlet, useLocation } from 'react-router-dom';
+import { Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileNav from './MobileNav';
 import { useUIStore } from '../../stores/uiStore';
+import { Skeleton } from '../ui/Skeleton';
+
+function PageLoader() {
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-3/4" />
+      <div className="grid grid-cols-4 gap-4 mt-4">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-32 rounded-2xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function AppShell() {
   const location = useLocation();
@@ -52,18 +69,17 @@ export default function AppShell() {
           id="main-content"
           aria-label="Contenu principal"
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, x: 8 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.2 }}
-              className="h-full"
-            >
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15 }}
+            className="h-full"
+          >
+            <Suspense fallback={<PageLoader />}>
               <Outlet />
-            </motion.div>
-          </AnimatePresence>
+            </Suspense>
+          </motion.div>
         </main>
       </div>
 

@@ -1306,12 +1306,6 @@ export default function DeviceDetail() {
                   )}
                 </>
               )}
-              {device.notes && (
-                <>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mt-4 mb-2">Notes</h3>
-                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{device.notes}</p>
-                </>
-              )}
             </GlassCard>
 
             {/* Statut & Affectation */}
@@ -1338,6 +1332,13 @@ export default function DeviceDetail() {
                 </div>
               )}
               <InfoRow label="Depuis" value={device.assignedAt ? formatDate(device.assignedAt) : undefined} />
+
+              {device.notes && (
+                <>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mt-4 mb-2">Notes</h3>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{device.notes}</p>
+                </>
+              )}
             </GlassCard>
           </div>
         </Tabs.Content>
