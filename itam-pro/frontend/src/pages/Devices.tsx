@@ -490,8 +490,29 @@ export default function Devices() {
   const [deleting,     setDeleting]     = useState<Device | null>(null);
   const [retireStatus, setRetireStatus] = useState('IN_STOCK');
 
+  const qc        = useQueryClient();
   const updateMut = useUpdateDevice(editing?.id ?? '');
   const deleteMut = useDeleteDevice();
+
+  const swapMut = useMutation({
+    mutationFn: async ({
+      oldId, newId, userId, assetTag, site, hostname, vlan, ipAddress, macAddress, bitlocker,
+    }: {
+      oldId: string; newId: string; userId: string;
+      assetTag: string; site: string; hostname: string;
+      vlan?: string; ipAddress?: string; macAddress?: string; bitlocker?: boolean;
+    }) => {
+      await api.delete(`/devices/${oldId}`, { data: { status: 'IN_STOCK' } });
+      await api.patch(`/devices/${newId}/assign`, { userId, assetTag });
+      await api.put(`/devices/${newId}`, { site, hostname, vlan, ipAddress, macAddress, bitlocker });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+    },
+  });
 
   const handleTabChange = (type: DeviceType) => {
     setActiveTab(type);
@@ -502,7 +523,24 @@ export default function Devices() {
   const closeForm = () => { setFormOpen(false); setEditing(null); };
 
   const handleSubmit = async (data: DeviceFormData) => {
-    if (editing) await updateMut.mutateAsync(data);
+    if (editing) {
+      if (data.swappedDeviceId && editing.assignedUserId) {
+        await swapMut.mutateAsync({
+          oldId:      editing.id,
+          newId:      data.swappedDeviceId,
+          userId:     editing.assignedUserId,
+          assetTag:   data.assetTag,
+          site:       data.site ?? 'SUD',
+          hostname:   data.hostname ?? '',
+          vlan:       data.vlan,
+          ipAddress:  data.ipAddress,
+          macAddress: data.macAddress,
+          bitlocker:  data.bitlocker,
+        });
+      } else {
+        await updateMut.mutateAsync(data);
+      }
+    }
     closeForm();
   };
 
@@ -652,7 +690,7 @@ export default function Devices() {
         <DeviceForm
           device={editing}
           isOpen={formOpen && !!editing}
-          isSaving={updateMut.isPending}
+          isSaving={updateMut.isPending || swapMut.isPending}
           isManager={user?.role === 'MANAGER'}
           onClose={closeForm}
           onSubmit={handleSubmit}

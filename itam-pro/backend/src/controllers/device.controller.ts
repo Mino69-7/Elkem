@@ -168,13 +168,17 @@ export async function createDevice(req: Request, res: Response, next: NextFuncti
 
 export async function updateDevice(req: Request, res: Response, next: NextFunction) {
   try {
-    const existing = await prisma.device.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.device.findUnique({
+      where: { id: req.params.id },
+      include: { assignedUser: { select: { id: true, displayName: true } } },
+    });
     if (!existing) return res.status(404).json({ message: 'Appareil introuvable' });
 
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: 'Données invalides', details: parsed.error.flatten() });
 
     const { purchaseDate, warrantyExpiry, assignedUserId, purchaseOrderId, ...rest } = parsed.data;
+    const updateTechName = req.currentUser!.displayName ?? req.currentUser!.email;
 
     let data: Record<string, unknown> = {
       ...rest,
@@ -182,6 +186,14 @@ export async function updateDevice(req: Request, res: Response, next: NextFuncti
       warrantyExpiry:  warrantyExpiry  !== undefined ? new Date(warrantyExpiry)  : undefined,
       purchaseOrderId: purchaseOrderId !== undefined ? (purchaseOrderId || null) : undefined,
     };
+
+    // Changement d'utilisateur assigné
+    const newAssignedUserId = assignedUserId !== undefined ? (assignedUserId || null) : undefined;
+    const userChanged = newAssignedUserId !== undefined && newAssignedUserId !== existing.assignedUserId;
+    if (userChanged) {
+      data.assignedUserId = newAssignedUserId;
+      data.assignedAt     = newAssignedUserId ? new Date() : null;
+    }
 
     // Si l'appareil est lié à un PO, le modèle/marque/type sont verrouillés
     if (existing.purchaseOrderId) {
@@ -206,6 +218,12 @@ export async function updateDevice(req: Request, res: Response, next: NextFuncti
       ? 'STATUS_CHANGED' as const
       : 'UPDATED' as const;
 
+    const STATUS_LABELS_FR: Record<string, string> = {
+      ORDERED: 'Commandé', IN_STOCK: 'En stock', ASSIGNED: 'Attribué',
+      PENDING_RETURN: 'À récupérer', IN_MAINTENANCE: 'En maintenance',
+      LOANER: 'Prêt', LOST: 'Perdu', STOLEN: 'Volé', RETIRED: 'Déchet',
+    };
+
     await prisma.auditLog.create({
       data: {
         deviceId:  existing.id,
@@ -214,10 +232,41 @@ export async function updateDevice(req: Request, res: Response, next: NextFuncti
         fieldName: action === 'STATUS_CHANGED' ? 'status' : undefined,
         oldValue:  action === 'STATUS_CHANGED' ? existing.status : undefined,
         newValue:  action === 'STATUS_CHANGED' ? parsed.data.status : undefined,
-        comment:   action === 'UPDATED' ? `Appareil ${existing.assetTag} mis à jour` : undefined,
+        comment:   action === 'STATUS_CHANGED'
+          ? `${STATUS_LABELS_FR[existing.status] ?? existing.status} → ${STATUS_LABELS_FR[parsed.data.status!] ?? parsed.data.status} — par ${updateTechName}`
+          : `Mis à jour par ${updateTechName}`,
         ipAddress: req.ip,
       },
     });
+
+    // Audit : changement d'utilisateur assigné
+    if (userChanged) {
+      if (existing.assignedUserId && existing.assignedUser) {
+        await prisma.auditLog.create({
+          data: {
+            deviceId:  existing.id,
+            userId:    req.currentUser!.id,
+            action:    'UNASSIGNED',
+            oldValue:  existing.assignedUser.displayName,
+            comment:   `Désaffecté de ${existing.assignedUser.displayName} par ${updateTechName}`,
+            ipAddress: req.ip,
+          },
+        });
+      }
+      if (newAssignedUserId) {
+        const newUser = await prisma.user.findUnique({ where: { id: newAssignedUserId }, select: { displayName: true } });
+        await prisma.auditLog.create({
+          data: {
+            deviceId:  existing.id,
+            userId:    req.currentUser!.id,
+            action:    'ASSIGNED',
+            newValue:  newUser?.displayName,
+            comment:   `Assigné à ${newUser?.displayName ?? '—'} par ${updateTechName}`,
+            ipAddress: req.ip,
+          },
+        });
+      }
+    }
 
     res.json(updated);
   } catch (err) {
@@ -280,7 +329,7 @@ export async function deleteDevice(req: Request, res: Response, next: NextFuncti
           userId:    req.currentUser!.id,
           action:    'UNASSIGNED',
           oldValue:  previousUser.displayName,
-          comment:   `Désaffecté par ${techName}`,
+          comment:   `Désaffecté de ${previousUser.displayName} par ${techName}`,
           ipAddress: req.ip,
         },
       });
@@ -295,7 +344,9 @@ export async function deleteDevice(req: Request, res: Response, next: NextFuncti
         fieldName: 'status',
         oldValue:  previousStatus,
         newValue:  newStatus,
-        comment:   `Statut : ${statusLabel} — par ${techName}`,
+        comment:   previousUser
+          ? `${previousUser.displayName} → ${statusLabel} — par ${techName}`
+          : `Statut : ${statusLabel} — par ${techName}`,
         ipAddress: req.ip,
       },
     });
@@ -328,13 +379,14 @@ export async function assignDevice(req: Request, res: Response, next: NextFuncti
       include: { assignedUser: { select: { id: true, displayName: true, email: true, avatar: true } } },
     });
 
+    const assignTechName = req.currentUser!.displayName ?? req.currentUser!.email;
     await prisma.auditLog.create({
       data: {
         deviceId:  device.id,
         userId:    req.currentUser!.id,
         action:    'ASSIGNED',
         newValue:  user.displayName,
-        comment:   `Assigné à ${user.displayName}`,
+        comment:   `Assigné à ${user.displayName} par ${assignTechName}`,
         ipAddress: req.ip,
       },
     });
@@ -360,13 +412,14 @@ export async function unassignDevice(req: Request, res: Response, next: NextFunc
       data: { assignedUserId: null, assignedAt: null, status: 'IN_STOCK' },
     });
 
+    const unassignTechName = req.currentUser!.displayName ?? req.currentUser!.email;
     await prisma.auditLog.create({
       data: {
         deviceId:  device.id,
         userId:    req.currentUser!.id,
         action:    'UNASSIGNED',
         oldValue:  device.assignedUser?.displayName,
-        comment:   'Désassigné',
+        comment:   `Désaffecté de ${device.assignedUser?.displayName ?? '—'} par ${unassignTechName}`,
         ipAddress: req.ip,
       },
     });

@@ -662,6 +662,55 @@ Toutes les queries Stock ont `staleTime: 0` + `refetchOnMount: true` pour fraîc
 - **GET /devices?type={type}&status=IN_STOCK&search=** : utilisé par PhoneModal, WorkstationModal et AssignFromPoolModal pour filtrer le pool disponible à l'affectation — recherche à partir de 1 caractère (workstations) ou 2 (phones)
 - **Règle invalidation cache** : toute mutation changeant le `status` d'un device DOIT invalider `['stock-summary']`, `['stock-devices']`, `['stockalerts']`
 - **AssignFromPoolModal submit séquentiel** : pour les workstations, toujours 2 appels — `/assign` puis `PUT /:id` pour les champs réseau/site/hostname — ne jamais fusionner en un seul appel car `/assign` a sa logique d'audit séparée
+- **Pool search dans DeviceForm** : `data.data ?? []` (PAS `data.devices`) — le backend renvoie `{ data: [...], total, ... }`. Utiliser ce format partout.
+- **DeviceForm SN en édition workstation** : pool search via `useEffect` + debounce 300ms → `GET /devices?type={type}&status=IN_STOCK&search={q}` → `data.data`. État: `snSearch`, `snResults`, `snLoading`, `swappedDevice`, `showSnSearch`. Le `swappedDeviceId` est inclus dans le payload `onSubmit`.
+- **Swap device dans Devices.tsx** : `swapMut` → 3 appels séquentiels : `DELETE /devices/{oldId}` `{status:'IN_STOCK'}` + `PATCH /devices/{newId}/assign` + `PUT /devices/{newId}`. Le `handleSubmit` vérifie `data.swappedDeviceId` pour décider entre swap et update normal.
+- **DeviceForm hostname en édition** : `readOnly={isEdit}` — se met à jour via `setValue` si swap mais non éditable manuellement.
+- **DeviceForm SN non-workstation en édition** : `readOnly={isEdit}` (SMARTPHONE, TABLET, MONITOR, etc.).
+
+---
+
+### ✅ Phase 15 — Traçabilité complète & swap PC (session 2026-04-02)
+
+#### SN verrouillé / pool search en édition (DeviceForm.tsx)
+- **Non-workstation** : SN `readOnly={isEdit}`, visuellement grisé
+- **Workstation (LAPTOP/DESKTOP/THIN_CLIENT/LAB_WORKSTATION)** : SN devient un pool search :
+  - Badge read-only affichant le SN actuel ou le SN sélectionné
+  - Bouton "Changer de PC" → ouvre un champ de recherche
+  - Debounce 300ms → `GET /devices?type={type}&status=IN_STOCK&search={q}` → `data.data ?? []`
+  - Sélection → hostname auto-recalculé, `swappedDevice` state mis à jour
+  - Bouton ✕ pour annuler et revenir au PC original
+- **Hostname** : `readOnly={isEdit}` dans tous les cas (auto-calculé)
+- `DeviceFormData` : ajout `swappedDeviceId?: string`
+
+#### Swap device (Devices.tsx)
+- `swapMut` : 3 appels séquentiels — `DELETE /devices/{oldId} {status:'IN_STOCK'}` + `PATCH /assign` + `PUT /:id`
+- `handleSubmit` : si `data.swappedDeviceId && editing.assignedUserId` → swap, sinon update normal
+- `isSaving={updateMut.isPending || swapMut.isPending}`
+- Cache invalidé : `['devices']`, `['stock-summary']`, `['stock-devices']`, `['stockalerts']`
+
+#### Hostname dans DeviceDetail header
+- Quand `backTo === '/devices'` : sous le nom de l'utilisateur, affiche `{hostname} | {brand} {model}` si hostname présent, sinon `{brand} {model}`
+
+#### Audit complet sur tous les mouvements (device.controller.ts)
+| Endpoint | Action | Commentaire |
+|---|---|---|
+| `PATCH /assign` | ASSIGNED | `Assigné à [user] par [tech]` |
+| `PATCH /unassign` | UNASSIGNED | `Désaffecté de [user] par [tech]` |
+| `DELETE /:id` (si assigné) | UNASSIGNED | `Désaffecté de [user] par [tech]` |
+| `DELETE /:id` | STATUS_CHANGED | `[user] → [statut] — par [tech]` (ou `Statut : [statut] — par [tech]` si non assigné) |
+| `PUT /:id` STATUS_CHANGED | STATUS_CHANGED | `[ancien statut FR] → [nouveau statut FR] — par [tech]` |
+| `PUT /:id` sans statut | UPDATED | `Mis à jour par [tech]` |
+| `PUT /:id` assignedUserId change | UNASSIGNED + ASSIGNED | Deux entrées séparées avec les deux noms |
+
+#### Changement d'utilisateur assigné via PUT (updateDevice)
+- `updateDevice` intègre maintenant `assignedUserId` dans la mise à jour Prisma (avant : ignoré silencieusement)
+- Si `assignedUserId` change : met à jour `assignedUserId + assignedAt` + crée UNASSIGNED (ancien) + ASSIGNED (nouveau)
+- `findUnique` inclut `assignedUser` pour avoir le `displayName` sans appel supplémentaire
+
+#### Stock › Déchets (Stock.tsx)
+- Colonne "Tag IT" (assetTag) supprimée
+- Remplacée par "Hostname" → `device.hostname ?? '—'`
 
 ---
 

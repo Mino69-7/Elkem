@@ -33,6 +33,7 @@ export interface DeviceFormData {
   bitlocker?: boolean;
   hasDocking?: boolean;
   imei?: string;
+  swappedDeviceId?: string;
 }
 
 export const deviceService = {

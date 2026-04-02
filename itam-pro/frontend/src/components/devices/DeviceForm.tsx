@@ -143,6 +143,13 @@ export default function DeviceForm({
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   const [pendingModelSearch, setPendingModelSearch] = useState<{ brand: string; model: string } | null>(null);
 
+  // Pool search pour le swap de PC en mode édition
+  const [snSearch,      setSnSearch]      = useState('');
+  const [snResults,     setSnResults]     = useState<Array<{ id: string; serialNumber: string; brand: string; model: string }>>([]);
+  const [snLoading,     setSnLoading]     = useState(false);
+  const [swappedDevice, setSwappedDevice] = useState<{ id: string; sn: string } | null>(null);
+  const [showSnSearch,  setShowSnSearch]  = useState(false);
+
   const {
     control, register, handleSubmit, reset, watch, setValue, setError,
     formState: { errors },
@@ -257,6 +264,28 @@ export default function DeviceForm({
     if (m.screenSize) setValue('screenSize', m.screenSize);
   };
 
+  // ── Recherche pool stock pour swap SN en édition ─────────
+  useEffect(() => {
+    if (!isEdit || !hasHostname || !showSnSearch || snSearch.length < 1) {
+      setSnResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSnLoading(true);
+      try {
+        const { data } = await api.get('/devices', {
+          params: { type: device!.type, status: 'IN_STOCK', search: snSearch },
+        });
+        setSnResults(data.data ?? []);
+      } catch {
+        setSnResults([]);
+      } finally {
+        setSnLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [snSearch, isEdit, hasHostname, showSnSearch]); // eslint-disable-line
+
   // ── Sync numéro de série ──────────────────────────────────
   const handleSync = async () => {
     if (!serialNumber?.trim()) return;
@@ -347,6 +376,7 @@ export default function DeviceForm({
       ipAddress:       values.ipAddress || undefined,
       macAddress:      values.macAddress || undefined,
       bitlocker:       values.bitlocker,
+      ...(swappedDevice ? { swappedDeviceId: swappedDevice.id } : {}),
     } as DeviceFormData);
   };
 
@@ -439,37 +469,132 @@ export default function DeviceForm({
               <div className="grid grid-cols-2 gap-3">
 
                 <Field label="N° de série" error={errors.serialNumber?.message} required>
-                  <input
-                    {...register('serialNumber', {
-                      onChange: (e) => {
-                        if (hasHostname && siteVal) {
-                          setValue('hostname', computeHostname(e.target.value, siteVal));
-                        }
-                      },
-                    })}
-                    placeholder="Ex : ABC1234"
-                    className="input-glass py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSync}
-                    disabled={syncState === 'loading' || !serialNumber?.trim()}
-                    className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] hover:text-primary transition-colors disabled:opacity-40"
-                  >
-                    {syncState === 'loading'
-                      ? <Loader2 size={11} className="animate-spin" />
-                      : <RefreshCw size={11} />}
-                    Sync
-                  </button>
-                  {syncState !== 'idle' && syncState !== 'loading' && (
-                    <p className={`text-[10px] flex items-center gap-1 ${
-                      syncState === 'duplicate' ? 'text-amber-400' :
-                      syncState === 'found'     ? 'text-emerald-400' : 'text-[var(--text-muted)]'
-                    }`}>
-                      {syncState === 'duplicate' && <AlertTriangle size={10} />}
-                      {syncState === 'found'     && <CheckCircle size={10} />}
-                      {syncMessage}
-                    </p>
+                  {isEdit && hasHostname ? (
+                    /* ── Edit workstation : pool search pour swap ── */
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--border-glass)] bg-white/[0.02]">
+                        <span className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate">
+                          {swappedDevice ? swappedDevice.sn : (device?.serialNumber ?? '—')}
+                        </span>
+                        {swappedDevice && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSwappedDevice(null);
+                              setShowSnSearch(false);
+                              setSnSearch('');
+                              setSnResults([]);
+                              setValue('serialNumber', device!.serialNumber);
+                              setValue('hostname', device!.hostname ?? '');
+                            }}
+                            className="text-[var(--text-muted)] hover:text-red-400 transition-colors flex-shrink-0"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                      {!swappedDevice && !showSnSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setShowSnSearch(true)}
+                          className="text-[10px] text-[var(--text-muted)] hover:text-primary transition-colors"
+                        >
+                          Changer de PC
+                        </button>
+                      )}
+                      {showSnSearch && !swappedDevice && (
+                        <div className="relative">
+                          <div className="relative">
+                            <input
+                              value={snSearch}
+                              onChange={(e) => setSnSearch(e.target.value)}
+                              placeholder="Rechercher un SN dans le pool..."
+                              className="input-glass py-2 text-sm w-full pr-7"
+                              autoFocus
+                            />
+                            {snLoading && (
+                              <Loader2 size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-[var(--text-muted)]" />
+                            )}
+                          </div>
+                          {snResults.length > 0 && (
+                            <div
+                              className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--border-glass)] overflow-hidden shadow-xl max-h-44 overflow-y-auto"
+                              style={{ background: 'var(--bg-secondary)' }}
+                            >
+                              {snResults.map((r) => (
+                                <button
+                                  key={r.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSwappedDevice({ id: r.id, sn: r.serialNumber });
+                                    setValue('serialNumber', r.serialNumber);
+                                    if (siteVal) setValue('hostname', computeHostname(r.serialNumber, siteVal));
+                                    setShowSnSearch(false);
+                                    setSnSearch('');
+                                    setSnResults([]);
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-white/5 transition-colors flex items-center justify-between gap-4"
+                                >
+                                  <span className="font-mono text-[var(--text-primary)]">{r.serialNumber}</span>
+                                  <span className="text-[10px] text-[var(--text-muted)] shrink-0">{r.brand} {r.model}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {snSearch.length >= 1 && snResults.length === 0 && !snLoading && (
+                            <p className="mt-1 text-[10px] text-[var(--text-muted)]">Aucun PC disponible dans le pool</p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => { setShowSnSearch(false); setSnSearch(''); setSnResults([]); }}
+                            className="mt-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* ── Création ou périphérique non-WS ── */
+                    <>
+                      <input
+                        {...register('serialNumber', {
+                          onChange: (e) => {
+                            if (hasHostname && siteVal) {
+                              setValue('hostname', computeHostname(e.target.value, siteVal));
+                            }
+                          },
+                        })}
+                        placeholder="Ex : ABC1234"
+                        readOnly={isEdit}
+                        className={`input-glass py-2 text-sm font-mono${isEdit ? ' opacity-60 cursor-not-allowed' : ''}`}
+                      />
+                      {!isEdit && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleSync}
+                            disabled={syncState === 'loading' || !serialNumber?.trim()}
+                            className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] hover:text-primary transition-colors disabled:opacity-40"
+                          >
+                            {syncState === 'loading'
+                              ? <Loader2 size={11} className="animate-spin" />
+                              : <RefreshCw size={11} />}
+                            Sync
+                          </button>
+                          {syncState !== 'idle' && syncState !== 'loading' && (
+                            <p className={`text-[10px] flex items-center gap-1 ${
+                              syncState === 'duplicate' ? 'text-amber-400' :
+                              syncState === 'found'     ? 'text-emerald-400' : 'text-[var(--text-muted)]'
+                            }`}>
+                              {syncState === 'duplicate' && <AlertTriangle size={10} />}
+                              {syncState === 'found'     && <CheckCircle size={10} />}
+                              {syncMessage}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </>
                   )}
                 </Field>
 
@@ -492,7 +617,8 @@ export default function DeviceForm({
                       placeholder={serialNumber?.trim() && siteVal
                         ? computeHostname(serialNumber, siteVal)
                         : 'Ex : SFS-W-ABC1234 (auto)'}
-                      className="input-glass py-2 text-sm"
+                      readOnly={isEdit}
+                      className={`input-glass py-2 text-sm${isEdit ? ' opacity-60 cursor-not-allowed' : ''}`}
                     />
                   </Field>
                 )}

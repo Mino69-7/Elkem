@@ -575,7 +575,7 @@ function TabDechets() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-glass)]">
-                  {['Tag IT', 'N° Série', 'Modèle', 'Statut', 'Date sortie', 'Alerte', ''].map((h) => (
+                  {['Hostname', 'N° Série', 'Modèle', 'Statut', 'Date sortie', 'Alerte', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
                   ))}
                 </tr>
@@ -595,7 +595,7 @@ function TabDechets() {
                       className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
                       <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
-                        {device.assetTag}
+                        {device.hostname ?? '—'}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
                         {device.serialNumber}

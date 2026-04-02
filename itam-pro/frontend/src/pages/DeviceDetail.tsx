@@ -1198,7 +1198,9 @@ export default function DeviceDetail() {
             <div>
               <h1 className="text-xl font-bold text-[var(--text-primary)]">{device.assignedUser.displayName}</h1>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="text-sm text-[var(--text-muted)]">{device.brand} {device.model}</span>
+                <span className="text-sm text-[var(--text-muted)] font-mono">
+                  {device.hostname ? `${device.hostname} | ` : ''}{device.brand} {device.model}
+                </span>
                 <StatusBadge status={device.status} />
               </div>
             </div>
