@@ -17,7 +17,7 @@ import { AppSelect } from '../components/ui/AppSelect';
 import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
 import { usePurchaseOrders, useOrderHistory, useCreateOrder, useCancelOrder, useReceiveDevice } from '../hooks/usePurchaseOrders';
-import { DEVICE_TYPE_LABELS, formatDate } from '../utils/formatters';
+import { DEVICE_TYPE_LABELS, KEYBOARD_LAYOUT_LABELS, formatDate } from '../utils/formatters';
 import type { DeviceModel, DeviceType, PurchaseOrder, POStatus } from '../types';
 import type { POFormData, ReceiveDeviceData } from '../services/purchaseOrder.service';
 
@@ -102,6 +102,14 @@ interface ReceiveModalProps {
   lastReceivedSn?: string;
 }
 
+// Nettoie un SN scanné : supprime le préfixe "S" ajouté par le GS1 Apple (Application Identifier)
+// Ex: "SXYZ123456" → "XYZ123456" (seulement si S + 8+ alphanum)
+function cleanSN(raw: string): string {
+  const v = raw.trim().toUpperCase();
+  if (v.length >= 9 && v.charAt(0) === 'S' && /^[A-Z0-9]+$/.test(v.slice(1))) return v.slice(1);
+  return v;
+}
+
 function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, lastReceivedSn }: ReceiveModalProps) {
   const [sn,    setSn]    = useState('');
   const [imei,  setImei]  = useState('');
@@ -124,6 +132,7 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, la
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!sn.trim()) return;
+    if (isPhone && sn.trim().length < 10) return;
     onSubmit({ serialNumber: sn.trim(), imei: imei.trim() || undefined, notes: notes.trim() || undefined });
   };
 
@@ -216,9 +225,14 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, la
                 <input
                   ref={snRef}
                   value={sn}
-                  onChange={(e) => setSn(e.target.value)}
+                  onChange={(e) => {
+                    const cleaned = cleanSN(e.target.value);
+                    if (isPhone && cleaned.length > 12) return;
+                    setSn(cleaned);
+                  }}
                   placeholder="Scannez ou saisissez le SN…"
                   required
+                  maxLength={isPhone ? 12 : undefined}
                   className="input-glass py-2 text-sm font-mono"
                 />
               </div>
@@ -227,7 +241,7 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, la
                   <label className="text-xs text-[var(--text-muted)]">IMEI *</label>
                   <input
                     value={imei}
-                    onChange={(e) => setImei(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                    onChange={(e) => { const d = e.target.value.replace(/\D/g, ''); setImei(d.length > 15 ? d.slice(-15) : d); }}
                     placeholder="15 chiffres"
                     required
                     className="input-glass py-2 text-sm font-mono tracking-widest"
@@ -584,12 +598,20 @@ function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string
 
 // ─── Onglet Catalogue modèles ─────────────────────────────────
 
+const HAS_KEYBOARD_TYPES = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
+
+const KEYBOARD_OPTIONS = [
+  'AZERTY_FR','QWERTY_UK','QWERTY_ES','QWERTY_IT','QWERTZ_DE',
+  'QWERTY_NO','QWERTY_RU','QWERTY_TR','QWERTY_AR',
+].map((k) => ({ value: k, label: KEYBOARD_LAYOUT_LABELS[k] ?? k }));
+
 interface ModelFormState {
   name: string; type: DeviceType | ''; brand: string;
-  processor: string; ram: string; storage: string; screenSize: string; notes: string;
+  processor: string; ram: string; storage: string; screenSize: string;
+  keyboardLayout: string; notes: string;
 }
 
-const emptyModel: ModelFormState = { name: '', type: '', brand: '', processor: '', ram: '', storage: '', screenSize: '', notes: '' };
+const emptyModel: ModelFormState = { name: '', type: '', brand: '', processor: '', ram: '', storage: '', screenSize: '', keyboardLayout: 'AZERTY_FR', notes: '' };
 
 function TabCatalogue({ isManager }: { isManager: boolean }) {
   const qc = useQueryClient();
@@ -664,23 +686,25 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
 
   const openEditModel = (m: DeviceModel) => {
     setEditingModel(m);
-    setModelForm({ name: m.name, type: m.type, brand: m.brand, processor: m.processor ?? '', ram: m.ram ?? '', storage: m.storage ?? '', screenSize: m.screenSize ?? '', notes: m.notes ?? '' });
+    setModelForm({ name: m.name, type: m.type, brand: m.brand, processor: m.processor ?? '', ram: m.ram ?? '', storage: m.storage ?? '', screenSize: m.screenSize ?? '', keyboardLayout: (m as any).keyboardLayout ?? 'AZERTY_FR', notes: m.notes ?? '' });
     setShowModelForm(true);
   };
 
   const handleSaveModel = () => {
     if (!modelForm.name || !modelForm.type || !modelForm.brand) return;
     const t = modelForm.type as DeviceType;
-    const hasSpecs = ['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'].includes(t);
+    const hasSpecs    = ['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'].includes(t);
+    const hasKeyboard = HAS_KEYBOARD_TYPES.includes(t);
     const payload = {
-      name:       modelForm.name,
-      type:       t,
-      brand:      modelForm.brand,
-      processor:  hasSpecs ? modelForm.processor  || undefined : undefined,
-      ram:        hasSpecs ? modelForm.ram        || undefined : undefined,
-      storage:    hasSpecs ? modelForm.storage    || undefined : undefined,
-      screenSize: t === 'LAPTOP' ? modelForm.screenSize || undefined : undefined,
-      notes:      modelForm.notes || undefined,
+      name:           modelForm.name,
+      type:           t,
+      brand:          modelForm.brand,
+      processor:      hasSpecs    ? modelForm.processor      || undefined : undefined,
+      ram:            hasSpecs    ? modelForm.ram             || undefined : undefined,
+      storage:        hasSpecs    ? modelForm.storage         || undefined : undefined,
+      screenSize:     t === 'LAPTOP' ? modelForm.screenSize  || undefined : undefined,
+      keyboardLayout: hasKeyboard ? modelForm.keyboardLayout || undefined : undefined,
+      notes:          modelForm.notes || undefined,
     };
     if (editingModel) updateModelMut.mutate({ id: editingModel.id, data: payload });
     else createModelMut.mutate(payload);
@@ -778,14 +802,16 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                     value={modelForm.type}
                     onChange={(v) => {
                       const next = v as DeviceType;
-                      const hasSpecs = ['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'].includes(next);
+                      const hasSpecs    = ['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'].includes(next);
+                      const hasKeyboard = HAS_KEYBOARD_TYPES.includes(next);
                       setModelForm((s) => ({
                         ...s,
-                        type:       next,
-                        processor:  hasSpecs ? s.processor  : '',
-                        ram:        hasSpecs ? s.ram        : '',
-                        storage:    hasSpecs ? s.storage    : '',
-                        screenSize: next === 'LAPTOP' ? s.screenSize : '',
+                        type:           next,
+                        processor:      hasSpecs    ? s.processor  : '',
+                        ram:            hasSpecs    ? s.ram        : '',
+                        storage:        hasSpecs    ? s.storage    : '',
+                        screenSize:     next === 'LAPTOP' ? s.screenSize : '',
+                        keyboardLayout: hasKeyboard ? s.keyboardLayout : '',
                       }));
                     }}
                     options={TYPE_OPTIONS}
@@ -823,6 +849,18 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                       </div>
                     )}
                   </>
+                )}
+                {/* Clavier — tous les postes de travail */}
+                {HAS_KEYBOARD_TYPES.includes(modelForm.type) && (
+                  <div className="col-span-2 flex flex-col gap-1">
+                    <label className="text-xs text-[var(--text-muted)]">Disposition clavier</label>
+                    <AppSelect
+                      value={modelForm.keyboardLayout}
+                      onChange={(v) => setModelForm((s) => ({ ...s, keyboardLayout: v }))}
+                      options={KEYBOARD_OPTIONS}
+                      placeholder="Clavier…"
+                    />
+                  </div>
                 )}
               </div>
               <div className="flex gap-2 mt-3">

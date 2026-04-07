@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
@@ -11,14 +11,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import api from '../services/api';
-import { deviceService } from '../services/device.service';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import DeviceForm from '../components/devices/DeviceForm';
 import { DEVICE_TYPE_LABELS, formatDate } from '../utils/formatters';
 import type { DeviceType, Device } from '../types';
-import type { DeviceFormData } from '../services/device.service';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -51,8 +48,7 @@ const TYPE_ORDER: DeviceType[] = [
 
 // ─── Onglet Inventaire ────────────────────────────────────────
 
-function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpen: (v: boolean) => void }) {
-  const qc       = useQueryClient();
+function TabInventaire() {
   const navigate = useNavigate();
   const [viewMode, setViewMode]         = useState<'grid' | 'list'>('grid');
   const [selectedModel, setSelectedModel] = useState<ModelStock | null>(null);
@@ -83,15 +79,6 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
     staleTime: 30_000,
   });
 
-  const createMut = useMutation({
-    mutationFn: (d: DeviceFormData) => deviceService.create(d),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['stock-summary'] });
-      qc.invalidateQueries({ queryKey: ['stock-devices'] });
-      qc.invalidateQueries({ queryKey: ['devices'] });
-      setFormOpen(false);
-    },
-  });
 
   const byType = TYPE_ORDER.reduce<Record<string, ModelStock[]>>((acc, t) => {
     const group = modelStock.filter((m) => m.type === t);
@@ -201,13 +188,6 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
           </GlassCard>
         )}
 
-        <DeviceForm
-          device={null}
-          isOpen={formOpen}
-          isSaving={createMut.isPending}
-          onClose={() => setFormOpen(false)}
-          onSubmit={(data) => createMut.mutate(data)}
-        />
       </div>
     );
   }
@@ -510,14 +490,6 @@ function TabInventaire({ formOpen, setFormOpen }: { formOpen: boolean; setFormOp
         </div>
       )}
 
-      {/* ─── Formulaire réception ────────────────────────────── */}
-      <DeviceForm
-        device={null}
-        isOpen={formOpen}
-        isSaving={createMut.isPending}
-        onClose={() => setFormOpen(false)}
-        onSubmit={(data) => createMut.mutate(data)}
-      />
     </div>
   );
 }
@@ -536,6 +508,15 @@ function TabDechets() {
     staleTime: 0,
     refetchOnMount: true,
   });
+
+  // Modèles actifs du catalogue — pour détecter les devices retirés dont le modèle est encore déployé
+  const { data: activeModels = [] } = useQuery<{ id: string; brand: string; name: string }[]>({
+    queryKey: ['device-models'],
+    queryFn: async () => { const { data } = await api.get('/devicemodels'); return data; },
+    staleTime: 60_000,
+  });
+  // Set brand|name pour lookup O(1)
+  const activeModelKeys = new Set(activeModels.map((m) => `${m.brand}|${m.name}`));
 
   const devices = retiredDevices?.data ?? [];
   const now = Date.now();
@@ -583,7 +564,8 @@ function TabDechets() {
               <tbody>
                 {devices.map((device, i) => {
                   const retiredAt = device.retiredAt ? new Date(device.retiredAt).getTime() : null;
-                  const isRecent = retiredAt !== null && (now - retiredAt) < SIX_MONTHS_MS && !!device.purchaseOrderId;
+                  const isRecent      = retiredAt !== null && (now - retiredAt) < SIX_MONTHS_MS && !!device.purchaseOrderId;
+                  const isActiveModel = activeModelKeys.has(`${device.brand}|${device.model}`);
                   const badge = STATUS_BADGE[device.status];
                   return (
                     <motion.tr
@@ -614,12 +596,20 @@ function TabDechets() {
                         {device.retiredAt ? formatDate(device.retiredAt) : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        {isRecent && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/15 text-orange-400">
-                            <AlertTriangle size={10} />
-                            Récent
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1 items-start">
+                          {isActiveModel && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400">
+                              <AlertTriangle size={10} />
+                              Modèle actif
+                            </span>
+                          )}
+                          {isRecent && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/15 text-orange-400">
+                              <AlertTriangle size={10} />
+                              Récent
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-[10px] text-primary">Détail →</span>
@@ -731,7 +721,7 @@ function TabMaintenance() {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function Stock() {
-  const [formOpen, setFormOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -743,11 +733,11 @@ export default function Stock() {
         </div>
         <div className="sm:ml-auto">
           <button
-            onClick={() => setFormOpen(true)}
+            onClick={() => navigate('/orders')}
             className="btn-primary flex items-center gap-2 px-4 py-2 text-sm"
           >
             <Plus size={16} />
-            Réceptionner
+            Nouvelle commande
           </button>
         </div>
       </div>
@@ -775,7 +765,7 @@ export default function Stock() {
         </Tabs.List>
 
         <Tabs.Content value="inventaire">
-          <TabInventaire formOpen={formOpen} setFormOpen={setFormOpen} />
+          <TabInventaire />
         </Tabs.Content>
         <Tabs.Content value="maintenance">
           <TabMaintenance />

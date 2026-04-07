@@ -77,7 +77,7 @@ const schema = z.object({
   vlan:            z.string().optional(),
   ipAddress:       z.string().optional(),
   macAddress:      z.string().optional(),
-  bitlocker:       z.boolean().optional(),
+  bitlocker:       z.string().optional(),
   processor:       z.string().optional(),
   ram:             z.string().optional(),
   storage:         z.string().optional(),
@@ -220,7 +220,7 @@ export default function DeviceForm({
         vlan:            device.vlan ?? '',
         ipAddress:       device.ipAddress ?? '',
         macAddress:      device.macAddress ?? '',
-        bitlocker:       device.bitlocker ?? false,
+        bitlocker:       device.bitlocker ?? '',
         processor:       device.processor ?? '',
         ram:             device.ram ?? '',
         storage:         device.storage ?? '',
@@ -244,7 +244,7 @@ export default function DeviceForm({
         status:          (requireUser || forcedUserId) ? 'ASSIGNED' : 'IN_STOCK',
         site:            'SUD',
         assignedUserId:  '',
-        bitlocker:       false,
+        bitlocker:       '',
         type:            initialType ?? '',
         assetTag:        'IT-',
       });
@@ -634,21 +634,14 @@ export default function DeviceForm({
                     <Field label="Adresse MAC">
                       <input {...register('macAddress')} placeholder="Ex : AA:BB:CC:DD:EE:FF" className="input-glass py-2 text-sm uppercase" />
                     </Field>
-                    <Field label="Bitlocker" className="col-span-2">
-                      <button
-                        type="button"
-                        onClick={() => setValue('bitlocker', !bitlockerVal)}
-                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-colors text-sm font-medium w-full ${
-                          bitlockerVal
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                            : 'border-[var(--border-glass)] text-[var(--text-muted)] hover:bg-white/5'
-                        }`}
-                      >
-                        {bitlockerVal
-                          ? <><Shield size={14} /> Bitlocker activé</>
-                          : <><ShieldOff size={14} /> Bitlocker désactivé</>
-                        }
-                      </button>
+                    <Field label="Clé Bitlocker" className="col-span-2">
+                      <input
+                        {...register('bitlocker')}
+                        placeholder="Clé de récupération (chiffres uniquement)"
+                        className="input-glass py-2 text-sm font-mono"
+                        inputMode="numeric"
+                        onChange={(e) => setValue('bitlocker', e.target.value.replace(/\D/g, ''))}
+                      />
                     </Field>
                   </>
                 )}
@@ -656,8 +649,8 @@ export default function DeviceForm({
             </section>
           )}
 
-          {/* ── 4. Spécifications — visible uniquement si le type a des specs ou un clavier ── */}
-          {selectedType && (HAS_SPECS.includes(selectedType) || HAS_KEYBOARD_LAYOUT.includes(selectedType)) && (
+          {/* ── 4. Spécifications — création uniquement (gérées par le catalogue en édition) ── */}
+          {!isEdit && selectedType && (HAS_SPECS.includes(selectedType) || HAS_KEYBOARD_LAYOUT.includes(selectedType)) && (
             <section>
               <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Spécifications</h3>
               <div className="grid grid-cols-2 gap-3">

@@ -94,7 +94,7 @@ model Device {
   vlan            String?
   ipAddress       String?
   macAddress      String?
-  bitlocker       Boolean?
+  bitlocker       String?
 
   // Écran — docking intégrée
   hasDocking      Boolean?
@@ -231,19 +231,20 @@ model Attachment {
 // ─── MODÈLES D'APPAREILS ─────────────────────────────────────
 
 model DeviceModel {
-  id          String     @id @default(cuid())
-  name        String
-  type        DeviceType
-  brand       String     @default("Dell")
-  processor   String?
-  ram         String?
-  storage     String?
-  screenSize  String?
-  notes       String?
-  isActive    Boolean    @default(true)
-  order       Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id              String          @id @default(cuid())
+  name            String
+  type            DeviceType
+  brand           String          @default("Dell")
+  processor       String?
+  ram             String?
+  storage         String?
+  screenSize      String?
+  keyboardLayout  KeyboardLayout? @default(AZERTY_FR)
+  notes           String?
+  isActive        Boolean         @default(true)
+  order           Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   purchaseOrders PurchaseOrder[]
 

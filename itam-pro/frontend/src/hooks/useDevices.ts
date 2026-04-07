@@ -46,6 +46,7 @@ export function useUpdateDevice(id: string) {
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
       qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
+      qc.invalidateQueries({ queryKey: ['retired-devices'] });
     },
   });
 }
@@ -54,8 +55,9 @@ export function useDeleteDevice() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => deviceService.retire(id, status),
-    onSuccess: () => {
+    onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['device', id] });
       qc.invalidateQueries({ queryKey: ['stock-summary'] });
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
@@ -76,6 +78,7 @@ export function useAssignDevice(id: string) {
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
       qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
+      qc.invalidateQueries({ queryKey: ['retired-devices'] });
     },
   });
 }
@@ -91,6 +94,7 @@ export function useUnassignDevice(id: string) {
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
       qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
+      qc.invalidateQueries({ queryKey: ['retired-devices'] });
     },
   });
 }

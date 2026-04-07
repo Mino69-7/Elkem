@@ -30,7 +30,7 @@ export interface DeviceFormData {
   vlan?: string;
   ipAddress?: string;
   macAddress?: string;
-  bitlocker?: boolean;
+  bitlocker?: string;
   hasDocking?: boolean;
   imei?: string;
   swappedDeviceId?: string;
@@ -68,8 +68,11 @@ export const deviceService = {
     return data;
   },
 
-  async assign(id: string, userId: string): Promise<Device> {
-    const { data } = await api.patch<Device>(`/devices/${id}/assign`, { userId });
+  async assign(id: string, userId: string, assetTag?: string): Promise<Device> {
+    const { data } = await api.patch<Device>(`/devices/${id}/assign`, {
+      userId,
+      ...(assetTag ? { assetTag } : {}),
+    });
     return data;
   },
 

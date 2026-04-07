@@ -34,7 +34,7 @@ const deviceSchema = z.object({
   vlan:            z.string().optional(),
   ipAddress:       z.string().optional(),
   macAddress:      z.string().optional(),
-  bitlocker:       z.boolean().optional(),
+  bitlocker:       z.string().optional(),
   hasDocking:      z.boolean().optional(),
   imei:            z.string().optional(),
 });
@@ -278,10 +278,11 @@ export async function updateDevice(req: Request, res: Response, next: NextFuncti
 // Aucune suppression réelle — changement de statut + audit trail complet
 
 const RETIRE_STATUS_LABELS: Record<string, string> = {
-  IN_STOCK: 'Stock',
-  RETIRED:  'Déchet',
-  LOST:     'Perdu',
-  STOLEN:   'Volé',
+  IN_STOCK:       'Stock',
+  IN_MAINTENANCE: 'En maintenance',
+  RETIRED:        'Déchet',
+  LOST:           'Perdu',
+  STOLEN:         'Volé',
 };
 const ALLOWED_RETIRE_STATUSES = Object.keys(RETIRE_STATUS_LABELS);
 

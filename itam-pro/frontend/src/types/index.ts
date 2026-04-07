@@ -83,7 +83,7 @@ export interface Device {
   vlan?: string;
   ipAddress?: string;
   macAddress?: string;
-  bitlocker?: boolean;
+  bitlocker?: string;
   hasDocking?: boolean;
   imei?: string;
   purchaseOrderId?: string;

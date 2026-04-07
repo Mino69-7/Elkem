@@ -8,7 +8,7 @@ import {
   Laptop, Monitor, Cpu, Tv, Layers, Headphones, Keyboard, Smartphone, Tablet, Server,
   Plus, X, Shield, ShieldOff,
 } from 'lucide-react';
-import { useDevice, useUpdateDevice, useDeleteDevice, useAssignDevice, useUnassignDevice } from '../hooks/useDevices';
+import { useDevice, useUpdateDevice, useDeleteDevice, useAssignDevice } from '../hooks/useDevices';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '../services/user.service';
 import { useAuthStore } from '../stores/authStore';
@@ -342,7 +342,12 @@ function PhoneModal({
       serialNumber: sn.trim() || undefined,
       ...(ticketRef.trim().length > 3 ? { assetTag: ticketRef.trim().toUpperCase() } : {}),
     }),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['user-devices', userId] }); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['device', device!.id] });
+      onClose();
+    },
   });
 
   const canSubmit = isEdit
@@ -738,7 +743,8 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
   const qc = useQueryClient();
   const [addingType,    setAddingType]    = useState<DeviceType | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
-  const [removingId,    setRemovingId]    = useState<string | null>(null);
+  const [removeConfirm, setRemoveConfirm] = useState<{ device: Device } | null>(null);
+  const [removeStatus,  setRemoveStatus]  = useState('IN_STOCK');
 
   // Modal édition poste de travail (DeviceForm)
   const [wsModal, setWsModal] = useState<{ device: Device; type: DeviceType } | null>(null);
@@ -772,28 +778,23 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
     return map;
   }, [userDevices]);
 
-  // Retirer un équipement : unassign si vrai device, delete si fake (PERIPH-/MON-)
+  // Retirer un équipement : DELETE soft-retire pour tous les devices (fake → RETIRED, réels → statut choisi)
   const removeMut = useMutation({
-    mutationFn: async (d: Device) => {
-      const isFake = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
-      return isFake
-        ? api.delete(`/devices/${d.id}`)
-        : api.patch(`/devices/${d.id}/unassign`);
-    },
-    onSuccess: (_, d) => {
+    mutationFn: ({ device: d, status }: { device: Device; status: string }) =>
+      api.delete(`/devices/${d.id}`, { data: { status } }),
+    onSuccess: (_, { device: d }) => {
       qc.invalidateQueries({ queryKey: ['user-devices', userId] });
       qc.invalidateQueries({ queryKey: ['devices'] });
-      // Vrais devices retournent en IN_STOCK → mettre à jour le stock et les alertes
-      const isFake = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
-      if (!isFake) {
-        qc.invalidateQueries({ queryKey: ['stock-summary'] });
-        qc.invalidateQueries({ queryKey: ['stock-devices'] });
-        qc.invalidateQueries({ queryKey: ['stockalerts'] });
-        qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
-      }
-      setRemovingId(null);
+      qc.invalidateQueries({ queryKey: ['device', d.id] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
+      qc.invalidateQueries({ queryKey: ['retired-devices'] });
+      setRemoveConfirm(null);
+      setRemoveStatus('IN_STOCK');
     },
-    onError: () => setRemovingId(null),
+    onError: () => setRemoveConfirm(null),
   });
 
   // Toggle docking intégrée sur un écran
@@ -806,8 +807,15 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
   // Mise à jour d'un équipement depuis l'onglet (périphériques)
   const updateEquipMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: object }) => api.put(`/devices/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_data, { id: deviceId }) => {
       qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['device', deviceId] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
+      qc.invalidateQueries({ queryKey: ['retired-devices'] });
       setEditingDevice(null);
     },
   });
@@ -815,8 +823,15 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
   // Mise à jour d'un poste de travail via modal pleine
   const wsUpdateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: object }) => api.put(`/devices/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_data, { id: deviceId }) => {
       qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['device', deviceId] });
+      qc.invalidateQueries({ queryKey: ['stock-summary'] });
+      qc.invalidateQueries({ queryKey: ['stock-devices'] });
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
+      qc.invalidateQueries({ queryKey: ['retired-devices'] });
       setWsModal(null);
     },
   });
@@ -838,7 +853,6 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
     const isWorkstation = WORKSTATION_TYPES.includes(d.type);
     const isMonitor     = d.type === 'MONITOR';
     const isPhone       = PHONE_CAT_TYPES.includes(d.type);
-    const isRemoving    = removingId === d.id;
     const isFake        = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
 
     return (
@@ -918,15 +932,11 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
               <Pencil size={12} />
             </button>
             <button
-              onClick={() => {
-                setRemovingId(d.id);
-                removeMut.mutate(d);
-              }}
-              disabled={isRemoving}
-              title={isFake ? 'Supprimer' : 'Désassigner'}
-              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
+              onClick={() => setRemoveConfirm({ device: d })}
+              title={isFake ? 'Retirer' : 'Désaffecter'}
+              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
             >
-              {isRemoving ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+              <X size={12} />
             </button>
           </div>
         )}
@@ -983,9 +993,8 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
                   canEdit && (
                     hasItems ? (
                       <button
-                        onClick={() => removeMut.mutate(devices[0])}
-                        disabled={removeMut.isPending && removingId === devices[0]?.id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-50"
+                        onClick={() => setRemoveConfirm({ device: devices[0] })}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-400 transition-colors"
                       >
                         <CheckCircle size={12} />
                         Oui — retirer
@@ -1106,6 +1115,91 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
           onClose={() => setWsAssignModal(null)}
         />
       )}
+
+      {/* ── Confirmation retrait équipement ── */}
+      {removeConfirm && (() => {
+        const d = removeConfirm.device;
+        const isFake = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
+        return (
+          <>
+            <motion.div
+              className="fixed inset-0 z-50 bg-black/60"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              onClick={() => { setRemoveConfirm(null); setRemoveStatus('IN_STOCK'); }}
+            />
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+            >
+              <div className="glass-card p-6 max-w-sm w-full space-y-5 pointer-events-auto">
+                <div>
+                  <h3 className="font-semibold text-[var(--text-primary)]">
+                    {isFake ? 'Retirer cet équipement' : 'Désaffecter cet équipement'}
+                  </h3>
+                  <p className="text-sm text-[var(--text-muted)] mt-1">
+                    <span className="font-mono font-semibold text-[var(--text-primary)]">
+                      {d.assetTag || d.serialNumber}
+                    </span>
+                    {' '}— {d.brand} {d.model}
+                  </p>
+                </div>
+
+                {!isFake && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-widest text-primary">
+                      Nouveau statut <span className="text-red-400">*</span>
+                    </label>
+                    <AppSelect
+                      value={removeStatus}
+                      onChange={setRemoveStatus}
+                      options={[
+                        { value: 'IN_STOCK',       label: 'Stock — retour en inventaire' },
+                        { value: 'IN_MAINTENANCE', label: 'Maintenance — envoi en atelier' },
+                        { value: 'RETIRED',        label: 'Déchet — mise au rebut' },
+                        { value: 'LOST',           label: 'Perdu — signalement perte' },
+                        { value: 'STOLEN',         label: 'Volé — signalement vol' },
+                      ]}
+                    />
+                    <p className="text-[10px] text-[var(--text-muted)]">
+                      {removeStatus === 'IN_STOCK'       && "L'équipement retourne dans le pool de stock disponible."}
+                      {removeStatus === 'IN_MAINTENANCE' && "L'équipement est envoyé en atelier et apparaîtra dans l'onglet Maintenance."}
+                      {removeStatus === 'RETIRED'        && "L'équipement est mis au rebut et apparaîtra dans l'onglet Déchets."}
+                      {removeStatus === 'LOST'           && "L'équipement est signalé perdu et apparaîtra dans l'onglet Déchets."}
+                      {removeStatus === 'STOLEN'         && "L'équipement est signalé volé et apparaîtra dans l'onglet Déchets."}
+                    </p>
+                  </div>
+                )}
+
+                {isFake && (
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Cet équipement sera retiré de la liste et archivé dans les déchets.
+                  </p>
+                )}
+
+                <p className="text-xs text-[var(--text-muted)] border-t border-[var(--border-glass)] pt-3">
+                  L'action sera tracée dans l'historique avec votre nom et la date.
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setRemoveConfirm(null); setRemoveStatus('IN_STOCK'); }}
+                    className="btn-secondary flex-1 py-2 text-sm"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={() => removeMut.mutate({ device: d, status: isFake ? 'RETIRED' : removeStatus })}
+                    disabled={removeMut.isPending}
+                    className="flex-1 py-2 text-sm rounded-xl bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 transition-colors font-medium disabled:opacity-50"
+                  >
+                    {removeMut.isPending ? 'En cours…' : 'Confirmer'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -1129,10 +1223,9 @@ export default function DeviceDetail() {
   const [retireStatus,  setRetireStatus]  = useState('IN_STOCK');
   const [selectedUser, setSelectedUser] = useState('');
 
-  const updateMut   = useUpdateDevice(id!);
-  const deleteMut   = useDeleteDevice();
-  const assignMut   = useAssignDevice(id!);
-  const unassignMut = useUnassignDevice(id!);
+  const updateMut = useUpdateDevice(id!);
+  const deleteMut = useDeleteDevice();
+  const assignMut = useAssignDevice(id!);
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
@@ -1155,10 +1248,6 @@ export default function DeviceDetail() {
     await assignMut.mutateAsync(selectedUser);
     setAssignOpen(false);
     setSelectedUser('');
-  };
-
-  const handleUnassign = async () => {
-    await unassignMut.mutateAsync();
   };
 
   // ─── États ─────────────────────────────────────────────────
@@ -1219,12 +1308,11 @@ export default function DeviceDetail() {
           <div className="sm:ml-auto flex items-center gap-2">
             {device.assignedUser ? (
               <button
-                onClick={handleUnassign}
-                disabled={unassignMut.isPending}
+                onClick={() => setDeleting(true)}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-amber-400 hover:border-amber-400/30 transition-colors"
               >
-                {unassignMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />}
-                Désassigner
+                <UserMinus size={14} />
+                Désaffecter
               </button>
             ) : (
               <button
@@ -1285,31 +1373,60 @@ export default function DeviceDetail() {
                   <span className="text-xs text-amber-400 flex items-center gap-1">⚠ Non lié à une commande</span>
                 </div>
               )}
-              <InfoRow label="Type"       value={DEVICE_TYPE_LABELS[device.type]} />
-              <InfoRow label="Marque"     value={device.brand} />
-              <InfoRow label="Modèle"     value={device.model} />
-              <InfoRow label="Processeur" value={device.processor} />
-              <InfoRow label="RAM"        value={device.ram} />
-              <InfoRow label="Stockage"   value={device.storage} />
-              <InfoRow label="Écran"      value={device.screenSize} />
-              <InfoRow label="Clavier"    value={device.keyboardLayout ? KEYBOARD_LAYOUT_LABELS[device.keyboardLayout] : undefined} />
+              <InfoRow label="Type"   value={DEVICE_TYPE_LABELS[device.type]} />
+              <InfoRow label="Marque" value={device.brand} />
+              <InfoRow label="Modèle" value={device.model} />
+              <InfoRow label="N° de série" value={device.serialNumber} />
+
+              {/* IMEI — smartphones / tablettes */}
+              {(device.type === 'SMARTPHONE' || device.type === 'TABLET') && (
+                <InfoRow label="IMEI" value={device.imei} />
+              )}
+
+              {/* Specs PC — LAPTOP, DESKTOP, LAB_WORKSTATION (pas THIN_CLIENT) */}
+              {(['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'] as string[]).includes(device.type) && (
+                <>
+                  <InfoRow label="Processeur" value={device.processor} />
+                  <InfoRow label="RAM"        value={device.ram} />
+                  <InfoRow label="Stockage"   value={device.storage} />
+                </>
+              )}
+
+              {/* Stockage — smartphones / tablettes */}
+              {(device.type === 'SMARTPHONE' || device.type === 'TABLET') && (
+                <InfoRow label="Stockage" value={device.storage} />
+              )}
+
+              {/* Écran — LAPTOP uniquement */}
+              {device.type === 'LAPTOP' && (
+                <InfoRow label="Écran" value={device.screenSize} />
+              )}
+
+              {/* Taille — moniteurs */}
+              {device.type === 'MONITOR' && (
+                <InfoRow label="Taille" value={device.screenSize} />
+              )}
+
+              {/* Clavier — LAPTOP, DESKTOP, LAB_WORKSTATION */}
+              {(['LAPTOP', 'DESKTOP', 'LAB_WORKSTATION'] as string[]).includes(device.type) && (
+                <InfoRow label="Clavier" value={device.keyboardLayout ? KEYBOARD_LAYOUT_LABELS[device.keyboardLayout] : undefined} />
+              )}
+
+              {/* Hostname — tous les postes de travail */}
+              {(['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'] as string[]).includes(device.type) && (
+                <InfoRow label="Hostname" value={device.hostname} />
+              )}
+
+              {/* Réseau étendu — LAB_WORKSTATION uniquement */}
               {device.type === 'LAB_WORKSTATION' && (
                 <>
-                  {(device.hostname || device.vlan || device.ipAddress || device.macAddress || device.bitlocker !== undefined) && (
+                  {(device.vlan || device.ipAddress || device.macAddress || device.bitlocker !== undefined) && (
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mt-4 mb-2">Réseau</h3>
                   )}
-                  <InfoRow label="Hostname"     value={device.hostname} />
-                  <InfoRow label="VLAN"         value={device.vlan} />
-                  <InfoRow label="Adresse IP"   value={device.ipAddress} />
-                  <InfoRow label="Adresse MAC"  value={device.macAddress} />
-                  {device.bitlocker !== undefined && device.bitlocker !== null && (
-                    <div className="flex justify-between gap-4 py-2 border-b border-[var(--border-glass)] last:border-0">
-                      <span className="text-xs text-[var(--text-muted)] flex-shrink-0">Bitlocker</span>
-                      <span className={`text-xs flex items-center gap-1 ${device.bitlocker ? 'text-emerald-400' : 'text-[var(--text-muted)]'}`}>
-                        {device.bitlocker ? <><Shield size={11} /> Activé</> : <><ShieldOff size={11} /> Désactivé</>}
-                      </span>
-                    </div>
-                  )}
+                  <InfoRow label="VLAN"        value={device.vlan} />
+                  <InfoRow label="Adresse IP"  value={device.ipAddress} />
+                  <InfoRow label="Adresse MAC" value={device.macAddress} />
+                  <InfoRow label="Clé Bitlocker" value={device.bitlocker} />
                 </>
               )}
             </GlassCard>
@@ -1519,17 +1636,19 @@ export default function DeviceDetail() {
                   value={retireStatus}
                   onChange={setRetireStatus}
                   options={[
-                    { value: 'IN_STOCK', label: 'Stock — retour en inventaire' },
-                    { value: 'RETIRED',  label: 'Déchet — mise au rebut' },
-                    { value: 'LOST',     label: 'Perdu — signalement perte' },
-                    { value: 'STOLEN',   label: 'Volé — signalement vol' },
+                    { value: 'IN_STOCK',       label: 'Stock — retour en inventaire' },
+                    { value: 'IN_MAINTENANCE', label: 'Maintenance — envoi en atelier' },
+                    { value: 'RETIRED',        label: 'Déchet — mise au rebut' },
+                    { value: 'LOST',           label: 'Perdu — signalement perte' },
+                    { value: 'STOLEN',         label: 'Volé — signalement vol' },
                   ]}
                 />
                 <p className="text-[10px] text-[var(--text-muted)]">
-                  {retireStatus === 'IN_STOCK' && 'L\'équipement retourne dans le pool de stock disponible.'}
-                  {retireStatus === 'RETIRED'  && 'L\'équipement est mis au rebut et apparaîtra dans l\'onglet Déchets.'}
-                  {retireStatus === 'LOST'     && 'L\'équipement est signalé perdu et apparaîtra dans l\'onglet Déchets.'}
-                  {retireStatus === 'STOLEN'   && 'L\'équipement est signalé volé et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'IN_STOCK'       && 'L\'équipement retourne dans le pool de stock disponible.'}
+                  {retireStatus === 'IN_MAINTENANCE' && 'L\'équipement est envoyé en atelier et apparaîtra dans l\'onglet Maintenance.'}
+                  {retireStatus === 'RETIRED'        && 'L\'équipement est mis au rebut et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'LOST'           && 'L\'équipement est signalé perdu et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'STOLEN'         && 'L\'équipement est signalé volé et apparaîtra dans l\'onglet Déchets.'}
                 </p>
               </div>
 

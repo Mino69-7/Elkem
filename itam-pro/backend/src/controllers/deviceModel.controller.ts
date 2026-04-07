@@ -2,17 +2,20 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 
+const KEYBOARD_LAYOUTS = ['AZERTY_FR','QWERTY_US','QWERTY_UK','QWERTY_ES','QWERTY_IT','QWERTY_NO','QWERTY_NL','QWERTZ_DE','QWERTZ_CH','QWERTY_RU','QWERTY_TR','QWERTY_AR','OTHER'] as const;
+
 const modelSchema = z.object({
-  name:       z.string().min(1),
-  type:       z.enum(['LAPTOP','DESKTOP','THIN_CLIENT','LAB_WORKSTATION','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
-  brand:      z.string().min(1),
-  processor:  z.string().optional(),
-  ram:        z.string().optional(),
-  storage:    z.string().optional(),
-  screenSize: z.string().optional(),
-  notes:      z.string().optional(),
-  isActive:   z.boolean().default(true),
-  order:      z.number().int().default(0),
+  name:           z.string().min(1),
+  type:           z.enum(['LAPTOP','DESKTOP','THIN_CLIENT','LAB_WORKSTATION','SMARTPHONE','TABLET','MONITOR','KEYBOARD','MOUSE','HEADSET','DOCKING_STATION','PRINTER','OTHER']),
+  brand:          z.string().min(1),
+  processor:      z.string().optional(),
+  ram:            z.string().optional(),
+  storage:        z.string().optional(),
+  screenSize:     z.string().optional(),
+  keyboardLayout: z.enum(KEYBOARD_LAYOUTS).optional(),
+  notes:          z.string().optional(),
+  isActive:       z.boolean().default(true),
+  order:          z.number().int().default(0),
 });
 
 export async function listModels(req: Request, res: Response, next: NextFunction) {

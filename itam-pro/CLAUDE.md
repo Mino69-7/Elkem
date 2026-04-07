@@ -119,6 +119,8 @@ backend/src/
   - `20260326115957_add_thin_client_lab_network_fields` — DeviceType THIN_CLIENT + LAB_WORKSTATION, champs réseau (hostname, vlan, ipAddress, macAddress, bitlocker)
   - `20260326134956_add_has_docking` — champ `hasDocking Boolean?` sur Device (écrans)
   - `20260326145425_add_imei` — champ `imei String?` sur Device (smartphones/tablettes)
+  - `20260407101852_add_keyboard_to_device_model` — champ `keyboardLayout KeyboardLayout? @default(AZERTY_FR)` sur DeviceModel
+  - `20260407120000_bitlocker_string` — champ `bitlocker String?` (anciennement `Boolean?`) — clé de récupération libre
 
 ---
 
@@ -285,7 +287,7 @@ Utilisés dans `DeviceForm.tsx` et `Devices.tsx` via `SITE_OPTIONS`.
 | PATCH | `/api/devices/:id` | TECHNICIAN | Mise à jour partielle — modèle verrouillé si purchaseOrderId |
 | PATCH | `/api/devices/:id/assign` | TECHNICIAN | Assigner à un user — accepte `{ userId, assetTag? }` |
 | PATCH | `/api/devices/:id/unassign` | TECHNICIAN | Désassigner → status IN_STOCK + audit UNASSIGNED |
-| DELETE | `/api/devices/:id` body `{ status }` | TECHNICIAN | Soft-retire : status IN_STOCK\|RETIRED\|LOST\|STOLEN — jamais supprimé |
+| DELETE | `/api/devices/:id` body `{ status }` | TECHNICIAN | Soft-retire : status IN_STOCK\|IN_MAINTENANCE\|RETIRED\|LOST\|STOLEN — jamais supprimé |
 | GET | `/api/devicemodels/stock-summary` | AUTH | Inventaire par modèle avec compteurs IN_STOCK/ORDERED |
 | DELETE | `/api/devicemodels/:id` | MANAGER | Supprimer un modèle du catalogue |
 | GET | `/api/lookup/serial/:sn` | AUTH | Lookup SN : local → Intune → Dell |
@@ -596,7 +598,7 @@ function buildHostname(type, site, sn, labType): string {
 - Service : `deviceService.retire(id, status)` → `DELETE /devices/:id` avec `{ data: { status } }` (Axios)
 
 #### Backend — soft-retire `deleteDevice`
-- `DELETE /devices/:id` body `{ status }` → valide parmi `['IN_STOCK', 'RETIRED', 'LOST', 'STOLEN']`
+- `DELETE /devices/:id` body `{ status }` → valide parmi `['IN_STOCK', 'IN_MAINTENANCE', 'RETIRED', 'LOST', 'STOLEN']`
 - Efface `assignedUserId` et `assignedAt` dans tous les cas (désaffectation)
 - Pose `retiredAt` uniquement pour RETIRED, LOST, STOLEN
 - Crée 2 audits si l'appareil était assigné : `UNASSIGNED` + `STATUS_CHANGED`
@@ -714,8 +716,85 @@ Toutes les queries Stock ont `staleTime: 0` + `refetchOnMount: true` pour fraîc
 
 ---
 
+### ✅ Phase 16 — Cohérence données, statuts & scan code-barres (2026-04-07)
+
+#### Statut IN_MAINTENANCE dans les popups de désaffectation
+- **Backend** `device.controller.ts` : `RETIRE_STATUS_LABELS` étendu — `IN_MAINTENANCE: 'En maintenance'` ajouté entre IN_STOCK et RETIRED
+- `ALLOWED_RETIRE_STATUSES = Object.keys(RETIRE_STATUS_LABELS)` → inclut automatiquement IN_MAINTENANCE
+- `retiredAt` **non posé** pour IN_MAINTENANCE (uniquement RETIRED, LOST, STOLEN)
+- **Frontend** : AppSelect dans les 3 popups de désaffectation mis à jour :
+  - `Devices.tsx` popup désaffectation (`retireStatus`)
+  - `DeviceDetail.tsx` popup TabEquipements (`removeStatus`)
+  - `DeviceDetail.tsx` popup principale (`retireStatus`)
+  - Option insérée entre Stock et Déchet : `{ value: 'IN_MAINTENANCE', label: 'Maintenance — envoi en atelier' }`
+  - Description : "L'équipement est envoyé en atelier et apparaîtra dans l'onglet Maintenance."
+- **Important** : après modification du backend, **redémarrer le serveur** (`Ctrl+C` puis `pnpm dev`) pour que le changement soit pris en compte (tsx watch ne recharge pas toujours les constantes module-level)
+
+#### Scan code-barres ReceiveModal (Orders.tsx)
+**Problème** : sur la boite d'un iPhone, le scanner GS1 Apple ajoute un préfixe "S" devant le SN (Application Identifier GS1-128) et l'IMEI est encodé en GTIN-14 ("0" + IMEI = 16 chiffres).
+
+**Corrections** :
+- `cleanSN(raw)` : fonction module-level — strip le "S" initial si suivi de 8+ alphanum (`/^[A-Z0-9]+$/`)
+- Champ SN en mode smartphone : `onChange` → `if (isPhone && cleaned.length > 12) return` (rejet silencieux > 12 chars) + `maxLength={isPhone ? 12 : undefined}` sur l'input
+- Validation minimum (< 10 chars) déplacée dans `handleSubmit` — **ne pas mettre dans onChange** car les scanners envoient les caractères un par un (comme frappe clavier) et chaque état intermédiaire aurait été rejeté
+- Champ IMEI : `d.length > 15 ? d.slice(-15) : d` — prend les 15 **derniers** chiffres (le "0" GTIN-14 est en tête, `slice(0,15)` prenait le mauvais côté)
+
+**Règles longueur iPhone** :
+| Barcode | Longueur | Traitement |
+|---|---|---|
+| SN Apple | 10–12 alphanum | cleanSN → accepté |
+| IMEI | 15 chiffres | slice(-15) si > 15 |
+| EID (eSIM) | 32 hex | > 12 → rejeté champ SN |
+
+#### Champ keyboardLayout dans le catalogue DeviceModel
+- Migration `20260407101852_add_keyboard_to_device_model` : `keyboardLayout KeyboardLayout? @default(AZERTY_FR)` sur `DeviceModel`
+- `deviceModel.controller.ts` : `keyboardLayout: z.enum(KEYBOARD_LAYOUTS).optional()` dans le schema Zod
+- `purchaseOrder.controller.ts` : `receiveDevice` passe `keyboardLayout: (dm as any).keyboardLayout ?? 'AZERTY_FR'` au device créé
+- `Orders.tsx` catalogue : AppSelect keyboard layout conditionnel sur `HAS_KEYBOARD_TYPES` dans le formulaire modèle
+- `DeviceForm.tsx` : section Spécifications masquée en mode édition (`!isEdit`) — valeurs préservées dans le state
+
+#### Champ Bitlocker Boolean → String (clé de récupération)
+**Décision** : Bitlocker n'est pas un toggle on/off mais une **clé de récupération numérique** à stocker.
+
+- Migration `20260407120000_bitlocker_string` : `ALTER TABLE "Device" ALTER COLUMN "bitlocker" TYPE TEXT USING NULL`
+  - Valeurs existantes (true/false) → NULL (aucune clé connue à conserver)
+- Fichiers mis à jour : `schema.prisma`, `device.controller.ts` (Zod), `types/index.ts`, `device.service.ts`
+- UI : toggle Activé/Désactivé remplacé par `<input>` texte chiffres uniquement (`replace(/\D/g, '')`) dans `DeviceForm.tsx`, `Devices.tsx` (AssignFromPoolModal), `DeviceDetail.tsx` (affichage `InfoRow` simple)
+- Imports `Shield`, `ShieldOff` retirés des usages Bitlocker (peuvent subsister pour d'autres usages)
+- **Procédure après migration** : arrêter le backend → `npx prisma generate` → redémarrer
+
+#### Widget Matériel conditionnel par type d'appareil (DeviceDetail.tsx)
+Avant : tous les devices affichaient Processeur/RAM/Écran/Clavier. Un iPhone montrait "Clavier: AZERTY_FR".
+
+Logique corrigée — champs affichés par type :
+| Champ | Types concernés |
+|---|---|
+| N° de série | Tous |
+| IMEI | SMARTPHONE, TABLET |
+| Processeur + RAM + Stockage | LAPTOP, DESKTOP, LAB_WORKSTATION (**pas THIN_CLIENT**) |
+| Stockage | + SMARTPHONE, TABLET |
+| Écran | LAPTOP uniquement |
+| Taille | MONITOR uniquement |
+| Clavier | LAPTOP, DESKTOP, LAB_WORKSTATION |
+| Hostname | LAPTOP, DESKTOP, THIN_CLIENT, LAB_WORKSTATION |
+| Réseau (VLAN/IP/MAC/Bitlocker) | LAB_WORKSTATION uniquement |
+
+**THIN_CLIENT** : affiche N° série + Hostname uniquement (pas de specs — matériel sans disque ni mémoire significatifs).
+
+#### Badge "Modèle actif" dans l'onglet Déchets (Stock.tsx)
+**Logique** : si un device retraité a un modèle encore `isActive: true` dans le catalogue, un badge alerte s'affiche sur sa ligne.
+
+- `TabDechets` charge `GET /devicemodels` (actifs uniquement, `staleTime: 60s`)
+- Set `brand|name` construit pour lookup O(1) : `activeModelKeys.has(\`${device.brand}|${device.model}\`)`
+- **Badge "Modèle actif"** (amber) : modèle encore déployé/commandé → alerte manager
+- **Badge "Récent"** (orange) existant conservé : retiré < 180j ET lié à un PO
+- Les deux badges peuvent coexister sur la même ligne (affichés en colonne)
+
+---
+
 ## En attente
 
+- ⏳ Redémarrer le backend + `npx prisma generate` (EPERM Windows — backend doit être arrêté)
 - ⏳ PWA polish (service worker, manifest, icônes complètes)
-- ⏳ Azure App Registration + SSO Intune (en attente droits admin)
+- ⏳ Azure App Registration + SSO Intune (en attente droits admin AD on-premise aussi)
 - ⏳ Page Dashboard — révision finale

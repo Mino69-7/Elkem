@@ -91,7 +91,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
   const [vlan,       setVlan]       = useState('');
   const [ipAddress,  setIpAddress]  = useState('');
   const [macAddress, setMacAddress] = useState('');
-  const [bitlocker,  setBitlocker]  = useState(false);
+  const [bitlocker,  setBitlocker]  = useState('');
 
   // Auto-calcul hostname quand site / labType / device sélectionné change
   useEffect(() => {
@@ -110,7 +110,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
       setVlan(d.vlan ?? '');
       setIpAddress(d.ipAddress ?? '');
       setMacAddress(d.macAddress ?? '');
-      setBitlocker(d.bitlocker ?? false);
+      setBitlocker(d.bitlocker ?? '');
     }
   };
 
@@ -170,11 +170,13 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
         await api.put(`/devices/${deviceId}`, extra);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, deviceId) => {
       qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['device', deviceId] });
       qc.invalidateQueries({ queryKey: ['stock-summary'] });
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
       onClose();
     },
   });
@@ -407,20 +409,14 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                               />
                             </div>
                             <div className="col-span-2">
-                              <button
-                                type="button"
-                                onClick={() => setBitlocker(!bitlocker)}
-                                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-colors text-sm font-medium ${
-                                  bitlocker
-                                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                                    : 'border-[var(--border-glass)] text-[var(--text-muted)] hover:bg-white/5'
-                                }`}
-                              >
-                                {bitlocker
-                                  ? <><Shield size={14} /> Bitlocker activé</>
-                                  : <><ShieldOff size={14} /> Bitlocker désactivé</>
-                                }
-                              </button>
+                              <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">Clé Bitlocker</label>
+                              <input
+                                value={bitlocker}
+                                onChange={(e) => setBitlocker(e.target.value.replace(/\D/g, ''))}
+                                placeholder="Clé de récupération (chiffres uniquement)"
+                                className="input-glass py-2 text-sm w-full font-mono"
+                                inputMode="numeric"
+                              />
                             </div>
                           </div>
                         )}
@@ -500,17 +496,20 @@ export default function Devices() {
     }: {
       oldId: string; newId: string; userId: string;
       assetTag: string; site: string; hostname: string;
-      vlan?: string; ipAddress?: string; macAddress?: string; bitlocker?: boolean;
+      vlan?: string; ipAddress?: string; macAddress?: string; bitlocker?: string;
     }) => {
       await api.delete(`/devices/${oldId}`, { data: { status: 'IN_STOCK' } });
       await api.patch(`/devices/${newId}/assign`, { userId, assetTag });
       await api.put(`/devices/${newId}`, { site, hostname, vlan, ipAddress, macAddress, bitlocker });
     },
-    onSuccess: () => {
+    onSuccess: (_data, { oldId, newId }) => {
       qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['device', oldId] });
+      qc.invalidateQueries({ queryKey: ['device', newId] });
       qc.invalidateQueries({ queryKey: ['stock-summary'] });
       qc.invalidateQueries({ queryKey: ['stock-devices'] });
       qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
     },
   });
 
@@ -735,17 +734,19 @@ export default function Devices() {
                   value={retireStatus}
                   onChange={setRetireStatus}
                   options={[
-                    { value: 'IN_STOCK', label: 'Stock — retour en inventaire' },
-                    { value: 'RETIRED',  label: 'Déchet — mise au rebut' },
-                    { value: 'LOST',     label: 'Perdu — signalement perte' },
-                    { value: 'STOLEN',   label: 'Volé — signalement vol' },
+                    { value: 'IN_STOCK',       label: 'Stock — retour en inventaire' },
+                    { value: 'IN_MAINTENANCE', label: 'Maintenance — envoi en atelier' },
+                    { value: 'RETIRED',        label: 'Déchet — mise au rebut' },
+                    { value: 'LOST',           label: 'Perdu — signalement perte' },
+                    { value: 'STOLEN',         label: 'Volé — signalement vol' },
                   ]}
                 />
                 <p className="text-[10px] text-[var(--text-muted)]">
-                  {retireStatus === 'IN_STOCK' && 'L\'équipement retourne dans le pool de stock disponible.'}
-                  {retireStatus === 'RETIRED'  && 'L\'équipement est mis au rebut et apparaîtra dans l\'onglet Déchets.'}
-                  {retireStatus === 'LOST'     && 'L\'équipement est signalé perdu et apparaîtra dans l\'onglet Déchets.'}
-                  {retireStatus === 'STOLEN'   && 'L\'équipement est signalé volé et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'IN_STOCK'       && 'L\'équipement retourne dans le pool de stock disponible.'}
+                  {retireStatus === 'IN_MAINTENANCE' && 'L\'équipement est envoyé en atelier et apparaîtra dans l\'onglet Maintenance.'}
+                  {retireStatus === 'RETIRED'        && 'L\'équipement est mis au rebut et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'LOST'           && 'L\'équipement est signalé perdu et apparaîtra dans l\'onglet Déchets.'}
+                  {retireStatus === 'STOLEN'         && 'L\'équipement est signalé volé et apparaîtra dans l\'onglet Déchets.'}
                 </p>
               </div>
 
