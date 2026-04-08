@@ -108,6 +108,10 @@ model Device {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
+  // Modèle du catalogue (référence directe)
+  modelId     String?
+  deviceModel DeviceModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+
   // Commande d'achat associée
   purchaseOrderId   String?
   purchaseOrder     PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
@@ -247,6 +251,7 @@ model DeviceModel {
   updatedAt       DateTime        @updatedAt
 
   purchaseOrders PurchaseOrder[]
+  devices        Device[]
 
   @@unique([name, type])
 }

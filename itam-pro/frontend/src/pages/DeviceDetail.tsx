@@ -102,6 +102,7 @@ function QuickAddForm({
     type,
     brand:          model?.brand ?? '—',
     model:          model?.name  ?? DEVICE_TYPE_LABELS[type],
+    modelId:        model?.id,
     status:         'ASSIGNED',
     assignedUserId,
     condition:      'GOOD',

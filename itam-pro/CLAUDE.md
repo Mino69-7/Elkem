@@ -792,9 +792,64 @@ Logique corrigée — champs affichés par type :
 
 ---
 
+### ✅ Phase 17 — FK modelId & pré-remplissage modèle robuste (2026-04-08)
+
+#### Problème investigué
+**Bug** : le champ "Modèle" dans DeviceForm apparaissait vide lors de l'édition d'un équipement mis en maintenance (ou stock, perte, vol), même si la page Informations affichait correctement le modèle.
+
+**Deux causes racines identifiées :**
+
+1. **Absence de FK `modelId` sur Device** — le formulaire retrouvait le modèle via `pendingModelSearch` (recherche textuelle `brand+name`). Cette recherche échouait :
+   - Pour les périphériques créés via `QuickAddForm` sans sélectionner de modèle : `brand = '—'`, `model = DEVICE_TYPE_LABELS[type]` (ex : "Écran") → jamais dans le catalogue
+   - Pour tout device dont le `DeviceModel` a été désactivé depuis la création
+
+2. **`pendingModelSearch` se vidait même si non trouvé** — si la liste de modèles du mauvais type (tous modèles, avant que `selectedType` soit actualisé) était chargée en premier et que la recherche échouait, `setPendingModelSearch(null)` était appelé inconditionnellement → abandon définitif de la recherche
+
+#### Décisions techniques
+
+- **Ajout de `modelId String?`** sur `Device` (FK vers `DeviceModel`, `onDelete: SetNull`) — solution pérenne qui élimine la dépendance à la correspondance textuelle
+- **`receiveDevice`** (PO) stocke désormais `modelId: dm.id` → tous les appareils reçus via commande ont le lien FK dès la réception
+- **`QuickAddForm.basePayload`** inclut `modelId: model?.id` si un modèle est sélectionné
+- **`DeviceForm`** : en édition, si `device.modelId` est présent → `setPendingModelId(device.modelId)` (mécanisme Priorité 1 existant, résolution par ID exact) ; sinon → `setPendingModelSearch` (fallback texte)
+- **`pendingModelSearch` ne se vide plus si non trouvé** — il réessaie à chaque nouveau chargement de modèles (changement de type, refetch)
+- **`.trim().toLowerCase()`** ajouté dans la comparaison brand+name pour couvrir les espaces parasites
+
+#### Règle importante — résolution modèle en édition
+```
+device.modelId présent → setPendingModelId(modelId)  → Priorité 1 (ID exact)
+device.modelId absent  → setPendingModelSearch({brand, model})  → Priorité 2 (texte)
+```
+- Si le modèle est inactif (désactivé) : `models.some()` échoue → `pendingModelId` reste set mais modelId reste vide → dropdown vide (comportement correct : modèle non sélectionnable)
+- En mode création : `setPendingModelId(null)` ET `setPendingModelSearch(null)` pour éviter toute interférence avec un état résiduel de la session d'édition précédente
+
+#### Fichiers modifiés
+| Fichier | Changement |
+|---|---|
+| `schema.prisma` | `modelId String?` + `DeviceModel? @relation(... onDelete: SetNull)` + `devices Device[]` sur DeviceModel |
+| `migrations/20260408000000_add_model_id_to_device/migration.sql` | `ALTER TABLE "Device" ADD COLUMN "modelId" TEXT` + FK constraint |
+| `backend/controllers/purchaseOrder.controller.ts` | `receiveDevice` : `modelId: dm.id` |
+| `backend/controllers/device.controller.ts` | `deviceSchema` : `modelId: z.string().optional()` ; `updateDevice` : lock `modelId` si PO-linked |
+| `frontend/src/types/index.ts` | `modelId?: string` sur `Device` |
+| `frontend/src/services/device.service.ts` | `modelId?: string` dans `DeviceFormData` |
+| `frontend/src/components/devices/DeviceForm.tsx` | Logique `pendingModelId` vs `pendingModelSearch` ; fix "ne pas vider si non trouvé" ; `modelId` dans payload submit ; reset création vide les deux états |
+| `frontend/src/pages/DeviceDetail.tsx` | `QuickAddForm.basePayload` : `modelId: model?.id` |
+| `frontend/src/pages/Devices.tsx` | `setBitlocker(false)` → `setBitlocker('')` (bug Bitlocker string résiduel) |
+
+#### Procédure après migration (EPERM Windows)
+```bash
+# 1. Arrêter le backend (Ctrl+C dans le terminal pnpm dev)
+# 2. Depuis itam-pro/backend/
+npx prisma generate
+# 3. Relancer
+cd .. && pnpm dev
+```
+La migration `20260408000000_add_model_id_to_device` a été appliquée avec succès via `prisma migrate deploy`.
+
+---
+
 ## En attente
 
-- ⏳ Redémarrer le backend + `npx prisma generate` (EPERM Windows — backend doit être arrêté)
+- ⏳ `npx prisma generate` à relancer (EPERM — backend doit être arrêté d'abord)
 - ⏳ PWA polish (service worker, manifest, icônes complètes)
 - ⏳ Azure App Registration + SSO Intune (en attente droits admin AD on-premise aussi)
 - ⏳ Page Dashboard — révision finale

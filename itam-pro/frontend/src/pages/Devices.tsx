@@ -123,7 +123,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
     setVlan('');
     setIpAddress('');
     setMacAddress('');
-    setBitlocker(false);
+    setBitlocker('');
   };
 
   // ── Requête pool ──────────────────────────────────────────

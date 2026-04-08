@@ -119,6 +119,7 @@ export async function receiveDevice(req: Request, res: Response, next: NextFunct
         type:           dm.type,
         brand:          dm.brand,
         model:          dm.name,
+        modelId:        dm.id,
         processor:      dm.processor ?? undefined,
         ram:            dm.ram ?? undefined,
         storage:        dm.storage ?? undefined,

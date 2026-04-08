@@ -188,22 +188,26 @@ export default function DeviceForm({
 
   // ── Applique le modèle après rechargement de la liste ────
   useEffect(() => {
-    // Priorité 1 : ID exact (ex : sync Dell)
+    // Priorité 1 : ID exact (ex : sync Dell, ou device.modelId FK direct)
     if (pendingModelId && models.some((m) => m.id === pendingModelId)) {
       setValue('modelId', pendingModelId);
       onModelChange(pendingModelId);
       setPendingModelId(null);
       return;
     }
-    // Priorité 2 : recherche par marque+nom (pré-remplissage édition)
+    // Priorité 2 : recherche par marque+nom (pré-remplissage édition, fallback)
     if (pendingModelSearch && models.length > 0) {
       const found = models.find(
         (m) =>
-          m.brand.toLowerCase() === pendingModelSearch.brand.toLowerCase() &&
-          m.name.toLowerCase()  === pendingModelSearch.model.toLowerCase()
+          m.brand.trim().toLowerCase() === pendingModelSearch.brand.trim().toLowerCase() &&
+          m.name.trim().toLowerCase()  === pendingModelSearch.model.trim().toLowerCase()
       );
-      if (found) setValue('modelId', found.id);
-      setPendingModelSearch(null);
+      if (found) {
+        setValue('modelId', found.id);
+        setPendingModelSearch(null); // trouvé → on arrête
+      }
+      // Si non trouvé, on ne vide PAS pendingModelSearch — une autre série de modèles
+      // (ex: après changement de type) pourrait réussir la recherche
     }
   }, [models, pendingModelId, pendingModelSearch]); // eslint-disable-line
 
@@ -215,7 +219,7 @@ export default function DeviceForm({
         assetTag:        device.assetTag ?? '',
         serialNumber:    device.serialNumber,
         type:            device.type,
-        modelId:         '',   // sera résolu par pendingModelSearch ci-dessous
+        modelId:         '',   // sera résolu par pendingModelId (FK) ou pendingModelSearch (fallback)
         hostname:        device.hostname ?? '',
         vlan:            device.vlan ?? '',
         ipAddress:       device.ipAddress ?? '',
@@ -236,8 +240,13 @@ export default function DeviceForm({
           ? `${device.assignedUser.displayName} (${device.assignedUser.email})`
           : undefined
       );
-      // Déclenche la recherche de modèle par marque+nom une fois les modèles chargés
-      setPendingModelSearch({ brand: device.brand, model: device.model });
+      // Résolution du modèle : FK directe en priorité, sinon recherche par marque+nom
+      if (device.modelId) {
+        setPendingModelId(device.modelId);   // Priorité 1 dans l'effet ci-dessous
+        setPendingModelSearch(null);
+      } else {
+        setPendingModelSearch({ brand: device.brand, model: device.model });
+      }
     } else {
       reset({
         keyboardLayout:  'AZERTY_FR',
@@ -249,6 +258,7 @@ export default function DeviceForm({
         assetTag:        'IT-',
       });
       setAssignedUserDisplay(undefined);
+      setPendingModelId(null);
       setPendingModelSearch(null);
     }
     setSyncState('idle');
@@ -364,6 +374,7 @@ export default function DeviceForm({
       type:            values.type,
       brand:           model?.brand ?? device?.brand ?? 'Dell',
       model:           model?.name ?? device?.model ?? '',
+      modelId:         values.modelId || undefined,
       processor:       values.processor || undefined,
       ram:             values.ram || undefined,
       storage:         values.storage || undefined,

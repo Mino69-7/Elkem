@@ -33,6 +33,7 @@ export interface DeviceFormData {
   bitlocker?: string;
   hasDocking?: boolean;
   imei?: string;
+  modelId?: string;
   swappedDeviceId?: string;
 }
 

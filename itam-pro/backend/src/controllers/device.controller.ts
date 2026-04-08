@@ -37,6 +37,7 @@ const deviceSchema = z.object({
   bitlocker:       z.string().optional(),
   hasDocking:      z.boolean().optional(),
   imei:            z.string().optional(),
+  modelId:         z.string().optional(),
 });
 
 const updateSchema = deviceSchema.partial();
@@ -195,9 +196,9 @@ export async function updateDevice(req: Request, res: Response, next: NextFuncti
       data.assignedAt     = newAssignedUserId ? new Date() : null;
     }
 
-    // Si l'appareil est lié à un PO, le modèle/marque/type sont verrouillés
+    // Si l'appareil est lié à un PO, le modèle/marque/type/modelId sont verrouillés
     if (existing.purchaseOrderId) {
-      data = { ...data, brand: existing.brand, model: existing.model, type: existing.type };
+      data = { ...data, brand: existing.brand, model: existing.model, type: existing.type, modelId: existing.modelId };
     }
 
     // Si changement de statut vers RETIRED, enregistrer retiredAt

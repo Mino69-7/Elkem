@@ -86,6 +86,7 @@ export interface Device {
   bitlocker?: string;
   hasDocking?: boolean;
   imei?: string;
+  modelId?: string;
   purchaseOrderId?: string;
   purchaseOrder?: PurchaseOrder;
   createdAt: string;
