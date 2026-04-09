@@ -12,12 +12,32 @@ const poSchema = z.object({
 
 const PO_INCLUDE = { deviceModel: true, createdBy: { select: { id: true, displayName: true } } };
 
+// Include enrichi pour les vues liste — inclut les devices reçus (pour le drawer de détail et la recherche par SN)
+const PO_LIST_INCLUDE = {
+  deviceModel: true,
+  createdBy: { select: { id: true, displayName: true } },
+  devices: {
+    select: {
+      id:           true,
+      serialNumber: true,
+      status:       true,
+      type:         true,
+      brand:        true,
+      model:        true,
+      assetTag:     true,
+      hostname:     true,
+      assignedUser: { select: { id: true, displayName: true, email: true } },
+    },
+    orderBy: { createdAt: 'asc' as const },
+  },
+};
+
 // Liste les POs actifs (hors CANCELLED et COMPLETE)
 export async function listOrders(req: Request, res: Response, next: NextFunction) {
   try {
     const orders = await prisma.purchaseOrder.findMany({
       where: { status: { notIn: ['CANCELLED', 'COMPLETE'] } },
-      include: PO_INCLUDE,
+      include: PO_LIST_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     res.json(orders);
@@ -28,7 +48,7 @@ export async function listOrders(req: Request, res: Response, next: NextFunction
 export async function listHistory(req: Request, res: Response, next: NextFunction) {
   try {
     const orders = await prisma.purchaseOrder.findMany({
-      include: PO_INCLUDE,
+      include: PO_LIST_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     res.json(orders);

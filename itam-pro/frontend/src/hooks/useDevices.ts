@@ -54,7 +54,8 @@ export function useUpdateDevice(id: string) {
 export function useDeleteDevice() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => deviceService.retire(id, status),
+    mutationFn: ({ id, status, maintenanceDeadline }: { id: string; status: string; maintenanceDeadline?: string }) =>
+      deviceService.retire(id, status, maintenanceDeadline),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ['devices'] });
       qc.invalidateQueries({ queryKey: ['device', id] });

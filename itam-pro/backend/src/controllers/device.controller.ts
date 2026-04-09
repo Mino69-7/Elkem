@@ -35,9 +35,10 @@ const deviceSchema = z.object({
   ipAddress:       z.string().optional(),
   macAddress:      z.string().optional(),
   bitlocker:       z.string().optional(),
-  hasDocking:      z.boolean().optional(),
-  imei:            z.string().optional(),
-  modelId:         z.string().optional(),
+  hasDocking:           z.boolean().optional(),
+  imei:                 z.string().optional(),
+  modelId:              z.string().optional(),
+  maintenanceDeadline:  z.string().optional(),
 });
 
 const updateSchema = deviceSchema.partial();
@@ -290,6 +291,7 @@ const ALLOWED_RETIRE_STATUSES = Object.keys(RETIRE_STATUS_LABELS);
 export async function deleteDevice(req: Request, res: Response, next: NextFunction) {
   try {
     const newStatus: string = (req.body?.status as string) || 'IN_STOCK';
+    const rawDeadline: string | undefined = req.body?.maintenanceDeadline as string | undefined;
     if (!ALLOWED_RETIRE_STATUSES.includes(newStatus)) {
       return res.status(400).json({ message: `Statut invalide. Valeurs acceptées : ${ALLOWED_RETIRE_STATUSES.join(', ')}` });
     }
@@ -312,6 +314,12 @@ export async function deleteDevice(req: Request, res: Response, next: NextFuncti
     // Horodatage de sortie pour les statuts hors-service
     if (['RETIRED', 'LOST', 'STOLEN'].includes(newStatus)) {
       updateData.retiredAt = new Date();
+    }
+    // Deadline de maintenance
+    if (newStatus === 'IN_MAINTENANCE' && rawDeadline) {
+      updateData.maintenanceDeadline = new Date(rawDeadline);
+    } else {
+      updateData.maintenanceDeadline = null;
     }
 
     const updated = await prisma.device.update({

@@ -744,8 +744,9 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
   const qc = useQueryClient();
   const [addingType,    setAddingType]    = useState<DeviceType | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
-  const [removeConfirm, setRemoveConfirm] = useState<{ device: Device } | null>(null);
-  const [removeStatus,  setRemoveStatus]  = useState('IN_STOCK');
+  const [removeConfirm,       setRemoveConfirm]       = useState<{ device: Device } | null>(null);
+  const [removeStatus,        setRemoveStatus]        = useState('IN_STOCK');
+  const [removeDeadline,      setRemoveDeadline]      = useState('');
 
   // Modal édition poste de travail (DeviceForm)
   const [wsModal, setWsModal] = useState<{ device: Device; type: DeviceType } | null>(null);
@@ -781,8 +782,8 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
 
   // Retirer un équipement : DELETE soft-retire pour tous les devices (fake → RETIRED, réels → statut choisi)
   const removeMut = useMutation({
-    mutationFn: ({ device: d, status }: { device: Device; status: string }) =>
-      api.delete(`/devices/${d.id}`, { data: { status } }),
+    mutationFn: ({ device: d, status, maintenanceDeadline }: { device: Device; status: string; maintenanceDeadline?: string }) =>
+      api.delete(`/devices/${d.id}`, { data: { status, ...(maintenanceDeadline ? { maintenanceDeadline } : {}) } }),
     onSuccess: (_, { device: d }) => {
       qc.invalidateQueries({ queryKey: ['user-devices', userId] });
       qc.invalidateQueries({ queryKey: ['devices'] });
@@ -1171,6 +1172,20 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
                   </div>
                 )}
 
+                {!isFake && removeStatus === 'IN_MAINTENANCE' && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
+                      Deadline de retour <span className="text-[var(--text-muted)]">(optionnel)</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={removeDeadline}
+                      onChange={(e) => setRemoveDeadline(e.target.value)}
+                      className="input-glass w-full text-sm"
+                    />
+                  </div>
+                )}
+
                 {isFake && (
                   <p className="text-xs text-[var(--text-muted)]">
                     Cet équipement sera retiré de la liste et archivé dans les déchets.
@@ -1183,13 +1198,17 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
 
                 <div className="flex gap-3">
                   <button
-                    onClick={() => { setRemoveConfirm(null); setRemoveStatus('IN_STOCK'); }}
+                    onClick={() => { setRemoveConfirm(null); setRemoveStatus('IN_STOCK'); setRemoveDeadline(''); }}
                     className="btn-secondary flex-1 py-2 text-sm"
                   >
                     Annuler
                   </button>
                   <button
-                    onClick={() => removeMut.mutate({ device: d, status: isFake ? 'RETIRED' : removeStatus })}
+                    onClick={() => removeMut.mutate({
+                      device: d,
+                      status: isFake ? 'RETIRED' : removeStatus,
+                      maintenanceDeadline: !isFake && removeStatus === 'IN_MAINTENANCE' ? removeDeadline || undefined : undefined,
+                    })}
                     disabled={removeMut.isPending}
                     className="flex-1 py-2 text-sm rounded-xl bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 transition-colors font-medium disabled:opacity-50"
                   >
@@ -1211,7 +1230,9 @@ export default function DeviceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const backTo = (location.state as any)?.from ?? '/devices';
+  const backTo  = (location.state as any)?.from    ?? '/devices';
+  const fromTab = (location.state as any)?.fromTab ?? undefined;
+  const goBack  = () => navigate(backTo, { state: fromTab ? { tab: fromTab } : undefined });
   const { user: currentUser } = useAuthStore();
   const canEdit = currentUser?.role === 'MANAGER' || currentUser?.role === 'TECHNICIAN';
   const isManager = currentUser?.role === 'MANAGER';
@@ -1220,8 +1241,9 @@ export default function DeviceDetail() {
 
   const [formOpen,   setFormOpen]   = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [deleting,      setDeleting]      = useState(false);
-  const [retireStatus,  setRetireStatus]  = useState('IN_STOCK');
+  const [deleting,             setDeleting]             = useState(false);
+  const [retireStatus,         setRetireStatus]         = useState('IN_STOCK');
+  const [retireDeadline,       setRetireDeadline]       = useState('');
   const [selectedUser, setSelectedUser] = useState('');
 
   const updateMut = useUpdateDevice(id!);
@@ -1240,8 +1262,16 @@ export default function DeviceDetail() {
   };
 
   const handleDelete = async () => {
-    await deleteMut.mutateAsync({ id: id!, status: retireStatus });
-    navigate(backTo);
+    try {
+      await deleteMut.mutateAsync({
+        id: id!,
+        status: retireStatus,
+        maintenanceDeadline: retireStatus === 'IN_MAINTENANCE' ? retireDeadline || undefined : undefined,
+      });
+      goBack();
+    } catch {
+      // L'erreur est exposée via deleteMut.error — pas de navigation si échec
+    }
   };
 
   const handleAssign = async () => {
@@ -1270,7 +1300,7 @@ export default function DeviceDetail() {
       <div className="p-6 flex flex-col items-center gap-4 pt-16">
         <AlertTriangle size={40} className="text-red-400" />
         <p className="text-[var(--text-secondary)]">Appareil introuvable</p>
-        <button onClick={() => navigate(backTo)} className="btn-secondary px-4 py-2 text-sm">Retour à la liste</button>
+        <button onClick={goBack} className="btn-secondary px-4 py-2 text-sm">Retour à la liste</button>
       </div>
     );
   }
@@ -1281,7 +1311,7 @@ export default function DeviceDetail() {
       {/* ─── Navigation & titre ────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(backTo)} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors" aria-label="Retour">
+          <button onClick={goBack} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors" aria-label="Retour">
             <ArrowLeft size={16} />
           </button>
           {backTo === '/devices' && device.assignedUser ? (
@@ -1653,12 +1683,26 @@ export default function DeviceDetail() {
                 </p>
               </div>
 
+              {retireStatus === 'IN_MAINTENANCE' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
+                    Deadline de retour <span className="text-[var(--text-muted)]">(optionnel)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={retireDeadline}
+                    onChange={(e) => setRetireDeadline(e.target.value)}
+                    className="input-glass w-full text-sm"
+                  />
+                </div>
+              )}
+
               <p className="text-xs text-[var(--text-muted)] border-t border-[var(--border-glass)] pt-3">
                 L'action sera tracée dans l'historique avec votre nom et la date.
               </p>
 
               <div className="flex gap-3">
-                <button onClick={() => { setDeleting(false); setRetireStatus('IN_STOCK'); }} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
+                <button onClick={() => { setDeleting(false); setRetireStatus('IN_STOCK'); setRetireDeadline(''); }} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
                 <button onClick={handleDelete} disabled={deleteMut.isPending} className="flex-1 py-2 text-sm rounded-xl bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 transition-colors font-medium disabled:opacity-50">
                   {deleteMut.isPending ? 'En cours…' : 'Confirmer'}
                 </button>

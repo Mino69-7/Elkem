@@ -6,7 +6,7 @@ export function usePurchaseOrders() {
 }
 
 export function useOrderHistory() {
-  return useQuery({ queryKey: ['orders-history'], queryFn: purchaseOrderService.history, staleTime: 30_000 });
+  return useQuery({ queryKey: ['orders-history'], queryFn: purchaseOrderService.history, staleTime: 0, refetchOnMount: true });
 }
 
 export function useCreateOrder() {

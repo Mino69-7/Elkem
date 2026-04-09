@@ -71,10 +71,11 @@ model Device {
   assignedAt      DateTime?
 
   // Cycle de vie
-  purchaseDate        DateTime?
-  warrantyExpiry      DateTime?
-  lastMaintenanceDate DateTime?
-  retiredAt           DateTime?
+  purchaseDate          DateTime?
+  warrantyExpiry        DateTime?
+  lastMaintenanceDate   DateTime?
+  retiredAt             DateTime?
+  maintenanceDeadline   DateTime?
 
   // Données financières
   purchasePrice   Float?

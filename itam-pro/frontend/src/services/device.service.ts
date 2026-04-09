@@ -64,8 +64,10 @@ export const deviceService = {
     return data;
   },
 
-  async retire(id: string, status: string): Promise<Device> {
-    const { data } = await api.delete<Device>(`/devices/${id}`, { data: { status } });
+  async retire(id: string, status: string, maintenanceDeadline?: string): Promise<Device> {
+    const { data } = await api.delete<Device>(`/devices/${id}`, {
+      data: { status, ...(maintenanceDeadline ? { maintenanceDeadline } : {}) },
+    });
     return data;
   },
 

@@ -8,17 +8,19 @@ import {
   X, Save, Package, Bell, Pencil, Trash2, Check, History, User,
   Laptop, Monitor, Smartphone, Tablet, Printer,
   Keyboard, Mouse, Headphones, Layers, HelpCircle, GripVertical,
-  Tv, Server,
+  Tv, Server, Search, ChevronRight, ArrowRight,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { AppSelect } from '../components/ui/AppSelect';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
 import { usePurchaseOrders, useOrderHistory, useCreateOrder, useCancelOrder, useReceiveDevice } from '../hooks/usePurchaseOrders';
-import { DEVICE_TYPE_LABELS, KEYBOARD_LAYOUT_LABELS, formatDate } from '../utils/formatters';
-import type { DeviceModel, DeviceType, PurchaseOrder, POStatus } from '../types';
+import { DEVICE_TYPE_LABELS, DEVICE_STATUS_LABELS, KEYBOARD_LAYOUT_LABELS, formatDate } from '../utils/formatters';
+import type { Device, DeviceModel, DeviceType, PurchaseOrder, POStatus } from '../types';
 import type { POFormData, ReceiveDeviceData } from '../services/purchaseOrder.service';
 
 // ─── Types locaux ─────────────────────────────────────────────
@@ -424,6 +426,11 @@ function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string
   const [receiveError,    setReceiveError]    = useState('');
   const [resetKey,        setResetKey]        = useState(0);
   const [lastReceivedSn,  setLastReceivedSn]  = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const selectedOrder = useMemo(
+    () => (selectedOrderId ? (orders.find((o) => o.id === selectedOrderId) ?? null) : null),
+    [orders, selectedOrderId]
+  );
 
   // Récupération des modèles pour le formulaire
   const { data: allModels = [] } = useQuery<DeviceModel[]>({
@@ -524,61 +531,67 @@ function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string
         </GlassCard>
       ) : (
         <div className="space-y-3">
-          {orders.map((order, i) => (
-            <motion.div
-              key={order.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-            >
-              <GlassCard padding="md">
-                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-                  {/* Infos principales */}
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">{order.reference}</span>
-                      <POStatusBadge status={order.status} />
-                    </div>
-                    <div className="text-xs text-[var(--text-secondary)]">
-                      {order.deviceModel.brand} {order.deviceModel.name}
-                      <span className="text-[var(--text-muted)] ml-2">— {DEVICE_TYPE_LABELS[order.deviceModel.type]}</span>
-                    </div>
-                    {order.expectedAt && (
-                      <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
-                        <Clock size={10} />
-                        Attendu le {formatDate(order.expectedAt)}
+          {orders.map((order, i) => {
+            const isClickable = order.receivedCount > 0;
+            return (
+              <motion.div
+                key={order.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+                onClick={() => isClickable && setSelectedOrderId(order.id)}
+                className={clsx(isClickable && 'cursor-pointer')}
+              >
+                <GlassCard padding="md" className={clsx(isClickable && 'hover:border-primary/30 transition-colors')}>
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                    {/* Infos principales */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">{order.reference}</span>
+                        <POStatusBadge status={order.status} />
                       </div>
-                    )}
-                    {/* Barre de progression */}
-                    <div className="max-w-xs">
-                      <ProgressBar received={order.receivedCount} total={order.quantity} status={order.status} />
+                      <div className="text-xs text-[var(--text-secondary)]">
+                        {order.deviceModel.brand} {order.deviceModel.name}
+                        <span className="text-[var(--text-muted)] ml-2">— {DEVICE_TYPE_LABELS[order.deviceModel.type]}</span>
+                      </div>
+                      {order.expectedAt && (
+                        <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                          <Clock size={10} />
+                          Attendu le {formatDate(order.expectedAt)}
+                        </div>
+                      )}
+                      {/* Barre de progression */}
+                      <div className="max-w-xs">
+                        <ProgressBar received={order.receivedCount} total={order.quantity} status={order.status} />
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {order.status !== 'COMPLETE' && order.status !== 'CANCELLED' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setReceiveError(''); setLastReceivedSn(''); setResetKey(0); setReceivingOrder(order); }}
+                          className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                        >
+                          <Package size={13} /> Réceptionner
+                        </button>
+                      )}
+                      {isManager && order.status !== 'COMPLETE' && order.status !== 'CANCELLED' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (confirm(`Annuler la commande ${order.reference} ?`)) cancelMut.mutate(order.id); }}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          title="Annuler la commande"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                      {isClickable && <ChevronRight size={14} className="text-[var(--text-muted)]" />}
                     </div>
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {order.status !== 'COMPLETE' && order.status !== 'CANCELLED' && (
-                      <button
-                        onClick={() => { setReceiveError(''); setLastReceivedSn(''); setResetKey(0); setReceivingOrder(order); }}
-                        className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs"
-                      >
-                        <Package size={13} /> Réceptionner
-                      </button>
-                    )}
-                    {isManager && order.status !== 'COMPLETE' && order.status !== 'CANCELLED' && (
-                      <button
-                        onClick={() => { if (confirm(`Annuler la commande ${order.reference} ?`)) cancelMut.mutate(order.id); }}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        title="Annuler la commande"
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </GlassCard>
-            </motion.div>
-          ))}
+                </GlassCard>
+              </motion.div>
+            );
+          })}
         </div>
       )}
 
@@ -592,6 +605,13 @@ function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string
         resetKey={resetKey}
         lastReceivedSn={lastReceivedSn}
       />
+
+      {/* Drawer détail commande */}
+      <AnimatePresence>
+        {selectedOrder && (
+          <PODetailDrawer order={selectedOrder} fromTab="orders" onClose={() => setSelectedOrderId(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1094,10 +1114,174 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
   );
 }
 
+// ─── Drawer détail commande ───────────────────────────────────
+
+function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fromTab: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  const devices: Device[] = order.devices ?? [];
+
+  const handleDeviceClick = (device: Device) => {
+    const { status } = device;
+    if (['ASSIGNED', 'PENDING_RETURN', 'LOANER'].includes(status)) {
+      navigate(`/devices/${device.id}`, { state: { from: '/orders', fromTab } });
+    } else if (status === 'IN_STOCK') {
+      navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'inventaire' } });
+    } else if (status === 'IN_MAINTENANCE') {
+      navigate(`/devices/${device.id}`, { state: { from: '/orders', fromTab } });
+    } else if (['RETIRED', 'LOST', 'STOLEN'].includes(status)) {
+      navigate(`/devices/${device.id}`, { state: { from: '/orders', fromTab } });
+    }
+    onClose();
+  };
+
+  const Icon = TYPE_ICONS[order.deviceModel.type] ?? HelpCircle;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <motion.div
+        className="fixed inset-0 z-50 bg-black/60"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      {/* Panel latéral */}
+      <motion.div
+        className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg flex flex-col overflow-hidden"
+        style={{ background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border-glass)' }}
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', stiffness: 400, damping: 40 }}
+      >
+        {/* Header */}
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Icon size={16} className="text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">{order.reference}</span>
+              <POStatusBadge status={order.status} />
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              {order.deviceModel.brand} {order.deviceModel.name}
+              <span className="ml-2">— {DEVICE_TYPE_LABELS[order.deviceModel.type]}</span>
+            </p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+              {order.receivedCount} / {order.quantity} appareil{order.quantity > 1 ? 's' : ''} reçu{order.receivedCount > 1 ? 's' : ''}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors flex-shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Liste des appareils */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {devices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Package size={32} className="text-[var(--text-muted)] opacity-30 mb-3" />
+              <p className="text-sm text-[var(--text-muted)]">Aucun appareil réceptionné</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-3">
+                Appareils réceptionnés ({devices.length})
+              </p>
+              {devices.map((device, i) => {
+                const isNavigable = !['ORDERED'].includes(device.status);
+                return (
+                  <motion.div
+                    key={device.id}
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.02 }}
+                    onClick={() => isNavigable && handleDeviceClick(device)}
+                    className={clsx(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[var(--border-glass)] transition-colors',
+                      isNavigable
+                        ? 'cursor-pointer hover:bg-white/[0.04] hover:border-primary/20'
+                        : 'opacity-50 cursor-default'
+                    )}
+                  >
+                    {/* SN + Tag */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-semibold text-[var(--text-primary)] truncate">
+                          {device.serialNumber}
+                        </span>
+                        {device.assetTag && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-mono whitespace-nowrap">
+                            {device.assetTag}
+                          </span>
+                        )}
+                      </div>
+                      {/* Utilisateur assigné */}
+                      {device.assignedUser && (
+                        <div className="flex items-center gap-1 mt-0.5 text-[10px] text-[var(--text-muted)]">
+                          <User size={9} />
+                          <span className="truncate">{device.assignedUser.displayName}</span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Statut + flèche */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <StatusBadge status={device.status} />
+                      {isNavigable && (
+                        <ChevronRight size={14} className="text-[var(--text-muted)]" />
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
 // ─── Onglet Historique ────────────────────────────────────────
 
 function TabHistory() {
   const { data: history = [], isLoading } = useOrderHistory();
+  const [search,           setSearch]           = useState('');
+  const [selectedOrderId,  setSelectedOrderId]  = useState<string | null>(null);
+
+  // Toujours dérivé du cache live → se met à jour si un refetch a lieu pendant que le drawer est ouvert
+  const selectedOrder = useMemo(
+    () => (selectedOrderId ? (history.find((o) => o.id === selectedOrderId) ?? null) : null),
+    [history, selectedOrderId]
+  );
+
+  // Filtre par référence OU par SN d'un appareil lié
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return history;
+    return history.filter((order) =>
+      order.reference.toLowerCase().includes(q) ||
+      (order.devices ?? []).some((d) => d.serialNumber.toLowerCase().includes(q))
+    );
+  }, [history, search]);
+
+  // IDs des commandes dont la correspondance vient du SN (pas de la référence)
+  const snMatchIds = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return new Set<string>();
+    const matched = new Set<string>();
+    history.forEach((order) => {
+      const refMatch = order.reference.toLowerCase().includes(q);
+      const snMatch  = (order.devices ?? []).some((d) => d.serialNumber.toLowerCase().includes(q));
+      if (snMatch && !refMatch) matched.add(order.id);
+    });
+    return matched;
+  }, [history, search]);
 
   if (isLoading) {
     return (
@@ -1109,56 +1293,97 @@ function TabHistory() {
     );
   }
 
-  if (history.length === 0) {
-    return (
-      <GlassCard padding="md" className="text-center py-12">
-        <History size={32} className="mx-auto mb-3 text-[var(--text-muted)] opacity-40" />
-        <p className="text-sm text-[var(--text-muted)]">Aucune commande dans l'historique</p>
-      </GlassCard>
-    );
-  }
-
   return (
     <div className="space-y-3">
-      {history.map((order, i) => (
-        <motion.div
-          key={order.id}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.02 }}
-        >
-          <GlassCard padding="md">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">{order.reference}</span>
-                  <POStatusBadge status={order.status} />
+      {/* Barre de recherche */}
+      <div className="relative max-w-sm">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Référence ou N° de série…"
+          className="input-glass pl-8 pr-8 py-2 text-sm w-full"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          >
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {history.length === 0 ? (
+        <GlassCard padding="md" className="text-center py-12">
+          <History size={32} className="mx-auto mb-3 text-[var(--text-muted)] opacity-40" />
+          <p className="text-sm text-[var(--text-muted)]">Aucune commande dans l'historique</p>
+        </GlassCard>
+      ) : filtered.length === 0 ? (
+        <GlassCard padding="md" className="text-center py-8">
+          <p className="text-sm text-[var(--text-muted)]">Aucun résultat pour « {search} »</p>
+        </GlassCard>
+      ) : (
+        filtered.map((order, i) => {
+          const isClickable = order.receivedCount > 0;
+          const hasSNMatch  = snMatchIds.has(order.id);
+          return (
+            <motion.div
+              key={order.id}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.02 }}
+              onClick={() => isClickable && setSelectedOrderId(order.id)}
+              className={clsx(isClickable && 'cursor-pointer')}
+            >
+              <GlassCard padding="md" className={clsx(isClickable && 'hover:border-primary/30 transition-colors')}>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">{order.reference}</span>
+                      <POStatusBadge status={order.status} />
+                      {hasSNMatch && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 text-[10px] font-semibold">
+                          SN trouvé
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-[var(--text-secondary)]">
+                      {order.deviceModel.brand} {order.deviceModel.name}
+                      <span className="text-[var(--text-muted)] ml-2">— {DEVICE_TYPE_LABELS[order.deviceModel.type]}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-[10px] text-[var(--text-muted)]">
+                      <span className="flex items-center gap-1">
+                        <Clock size={10} />
+                        {formatDate(order.createdAt)}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <User size={10} />
+                        {order.createdBy?.displayName ?? '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-[var(--text-primary)]">
+                        {order.receivedCount} / {order.quantity}
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)]">appareils reçus</div>
+                    </div>
+                    {isClickable && <ChevronRight size={14} className="text-[var(--text-muted)]" />}
+                  </div>
                 </div>
-                <div className="text-xs text-[var(--text-secondary)]">
-                  {order.deviceModel.brand} {order.deviceModel.name}
-                  <span className="text-[var(--text-muted)] ml-2">— {DEVICE_TYPE_LABELS[order.deviceModel.type]}</span>
-                </div>
-                <div className="flex items-center gap-4 text-[10px] text-[var(--text-muted)]">
-                  <span className="flex items-center gap-1">
-                    <Clock size={10} />
-                    {formatDate(order.createdAt)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <User size={10} />
-                    {order.createdBy?.displayName ?? '—'}
-                  </span>
-                </div>
-              </div>
-              <div className="flex-shrink-0 text-right">
-                <div className="text-sm font-semibold text-[var(--text-primary)]">
-                  {order.receivedCount} / {order.quantity}
-                </div>
-                <div className="text-[10px] text-[var(--text-muted)]">appareils reçus</div>
-              </div>
-            </div>
-          </GlassCard>
-        </motion.div>
-      ))}
+              </GlassCard>
+            </motion.div>
+          );
+        })
+      )}
+
+      <AnimatePresence>
+        {selectedOrder && (
+          <PODetailDrawer order={selectedOrder} fromTab="history" onClose={() => setSelectedOrderId(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1166,8 +1391,18 @@ function TabHistory() {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function Orders() {
-  const { user } = useAuthStore();
-  const isManager = user?.role === 'MANAGER';
+  const { user }   = useAuthStore();
+  const location   = useLocation();
+  const isManager  = user?.role === 'MANAGER';
+  const [activeTab, setActiveTab] = useState<string>(
+    (location.state as any)?.tab ?? 'orders'
+  );
+
+  // Re-sync quand la navigation change (ex: retour depuis DeviceDetail ou clic Sidebar)
+  useEffect(() => {
+    const t = (location.state as any)?.tab;
+    setActiveTab(t ?? 'orders');
+  }, [location.state]);
 
   // nextRef calculé depuis l'historique complet pour éviter les doublons
   const { data: history = [] } = useOrderHistory();
@@ -1189,7 +1424,7 @@ export default function Orders() {
         <p className="text-sm text-[var(--text-muted)] mt-0.5">Gestion des achats, modèles et alertes de stock</p>
       </div>
 
-      <Tabs.Root defaultValue="orders">
+      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] bg-white/[0.02] w-fit mb-6">
           {[
             { value: 'orders',    label: 'Commandes' },

@@ -68,6 +68,7 @@ export interface Device {
   warrantyExpiry?: string;
   lastMaintenanceDate?: string;
   retiredAt?: string;
+  maintenanceDeadline?: string;
   purchasePrice?: number;
   supplier?: string;
   invoiceNumber?: string;

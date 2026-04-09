@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -8,12 +8,13 @@ import {
   Mouse, Headphones, Layers, HelpCircle, Cpu, MemoryStick, HardDrive,
   Trash2, LayoutGrid, List, ArrowLeft, Tv, Server, Wrench,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import api from '../services/api';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { AppSelect } from '../components/ui/AppSelect';
 import { DEVICE_TYPE_LABELS, formatDate } from '../utils/formatters';
 import type { DeviceType, Device } from '../types';
 
@@ -93,7 +94,7 @@ function TabInventaire() {
   const allDevices = [...(stockDevices?.data ?? []), ...(orderedDevices?.data ?? [])];
 
   const goToDevice = (deviceId: string) =>
-    navigate(`/devices/${deviceId}`, { state: { from: '/stock' } });
+    navigate(`/devices/${deviceId}`, { state: { from: '/stock', fromTab: 'inventaire' } });
 
   // ─── Vue détail modèle ──────────────────────────────────────
 
@@ -498,6 +499,9 @@ function TabInventaire() {
 
 function TabDechets() {
   const navigate = useNavigate();
+  const [typeFilter,   setTypeFilter]   = useState('ALL');
+  const [modelFilter,  setModelFilter]  = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   const { data: retiredDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['retired-devices'],
@@ -509,33 +513,92 @@ function TabDechets() {
     refetchOnMount: true,
   });
 
-  // Modèles actifs du catalogue — pour détecter les devices retirés dont le modèle est encore déployé
   const { data: activeModels = [] } = useQuery<{ id: string; brand: string; name: string }[]>({
     queryKey: ['device-models'],
     queryFn: async () => { const { data } = await api.get('/devicemodels'); return data; },
     staleTime: 60_000,
   });
-  // Set brand|name pour lookup O(1)
   const activeModelKeys = new Set(activeModels.map((m) => `${m.brand}|${m.name}`));
 
-  const devices = retiredDevices?.data ?? [];
+  const allDevices = retiredDevices?.data ?? [];
   const now = Date.now();
   const SIX_MONTHS_MS = 180 * 24 * 60 * 60 * 1000;
 
+  // Options Type (types présents, ordre TYPE_ORDER)
+  const presentTypes = TYPE_ORDER.filter((t) => allDevices.some((d) => d.type === t));
+  const typeOptions = [
+    { value: 'ALL', label: 'Tous les types' },
+    ...presentTypes.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] ?? t })),
+  ];
+
+  // Filtrage progressif
+  const afterType = typeFilter === 'ALL' ? allDevices : allDevices.filter((d) => d.type === typeFilter);
+
+  // Options Modèle (parmi les devices après filtre type)
+  const presentModelKeys = [...new Set(afterType.map((d) => `${d.brand}|${d.model}`))];
+  const modelOptions = [
+    { value: 'ALL', label: 'Tous les modèles' },
+    ...presentModelKeys.map((k) => {
+      const [brand, model] = k.split('|');
+      return { value: k, label: `${brand} ${model}` };
+    }),
+  ];
+
+  const afterModel = modelFilter === 'ALL' ? afterType : afterType.filter((d) => `${d.brand}|${d.model}` === modelFilter);
+
+  const statusOptions = [
+    { value: 'ALL',     label: 'Tous les statuts' },
+    { value: 'RETIRED', label: 'Déchet' },
+    { value: 'LOST',    label: 'Perdu' },
+    { value: 'STOLEN',  label: 'Volé' },
+  ];
+
+  const devices = statusFilter === 'ALL' ? afterModel : afterModel.filter((d) => d.status === statusFilter);
+  const isFiltered = typeFilter !== 'ALL' || modelFilter !== 'ALL' || statusFilter !== 'ALL';
+
   const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-    RETIRED: { label: 'Déchet',  cls: 'bg-zinc-500/20 text-zinc-400' },
-    LOST:    { label: 'Perdu',   cls: 'bg-red-500/15 text-red-400' },
-    STOLEN:  { label: 'Volé',    cls: 'bg-purple-500/15 text-purple-400' },
+    RETIRED: { label: 'Déchet', cls: 'bg-zinc-500/20 text-zinc-400' },
+    LOST:    { label: 'Perdu',  cls: 'bg-red-500/15 text-red-400' },
+    STOLEN:  { label: 'Volé',   cls: 'bg-purple-500/15 text-purple-400' },
   };
+
+  const handleTypeChange = (v: string) => { setTypeFilter(v); setModelFilter('ALL'); };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Trash2 size={16} className="text-[var(--text-muted)]" />
         <h2 className="text-sm font-semibold text-[var(--text-secondary)]">
-          Appareils hors service ({devices.length})
+          Appareils hors service ({devices.length}{isFiltered ? `/${allDevices.length}` : ''})
         </h2>
       </div>
+
+      {/* ─── Filtres ─────────────────────────────────────────── */}
+      {!isLoading && allDevices.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <AppSelect
+            value={typeFilter}
+            onChange={handleTypeChange}
+            options={typeOptions}
+            placeholder="Type"
+            className="!py-1.5 !text-xs w-44"
+          />
+          <AppSelect
+            value={modelFilter}
+            onChange={setModelFilter}
+            options={modelOptions}
+            placeholder="Modèle"
+            className="!py-1.5 !text-xs w-52"
+          />
+          <AppSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusOptions}
+            placeholder="Statut"
+            className="!py-1.5 !text-xs w-44"
+          />
+        </div>
+      )}
 
       {isLoading ? (
         <GlassCard padding="none">
@@ -548,7 +611,9 @@ function TabDechets() {
       ) : devices.length === 0 ? (
         <GlassCard padding="md" className="text-center py-12">
           <Trash2 size={32} className="mx-auto mb-3 text-[var(--text-muted)] opacity-30" />
-          <p className="text-sm text-[var(--text-muted)]">Aucun appareil hors service</p>
+          <p className="text-sm text-[var(--text-muted)]">
+            {allDevices.length === 0 ? 'Aucun appareil hors service' : 'Aucun résultat pour ces filtres'}
+          </p>
         </GlassCard>
       ) : (
         <GlassCard padding="none">
@@ -556,34 +621,41 @@ function TabDechets() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-glass)]">
-                  {['Hostname', 'N° Série', 'Modèle', 'Statut', 'Date sortie', 'Alerte', ''].map((h) => (
+                  {['Tag IT', 'Type', 'Modèle', 'Hostname', 'Statut', 'Date sortie', 'Alerte'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {devices.map((device, i) => {
-                  const retiredAt = device.retiredAt ? new Date(device.retiredAt).getTime() : null;
+                  const retiredAt     = device.retiredAt ? new Date(device.retiredAt).getTime() : null;
                   const isRecent      = retiredAt !== null && (now - retiredAt) < SIX_MONTHS_MS && !!device.purchaseOrderId;
                   const isActiveModel = activeModelKeys.has(`${device.brand}|${device.model}`);
-                  const badge = STATUS_BADGE[device.status];
+                  const badge         = STATUS_BADGE[device.status];
+                  const Icon          = TYPE_ICONS[device.type as DeviceType] ?? HelpCircle;
                   return (
                     <motion.tr
                       key={device.id}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.02 }}
-                      onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock' } })}
+                      onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'dechets' } })}
                       className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
                       <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
-                        {device.hostname ?? '—'}
+                        {device.assetTag ?? '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                          <Icon size={13} className="flex-shrink-0" />
+                          <span className="whitespace-nowrap">{DEVICE_TYPE_LABELS[device.type as DeviceType] ?? device.type}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
+                        {device.brand} {device.model}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
-                        {device.serialNumber}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                        {device.brand} {device.model}
+                        {device.hostname ?? '—'}
                       </td>
                       <td className="px-4 py-3">
                         {badge && (
@@ -611,9 +683,6 @@ function TabDechets() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="text-[10px] text-primary">Détail →</span>
-                      </td>
                     </motion.tr>
                   );
                 })}
@@ -630,6 +699,8 @@ function TabDechets() {
 
 function TabMaintenance() {
   const navigate = useNavigate();
+  const [typeFilter,  setTypeFilter]  = useState('ALL');
+  const [modelFilter, setModelFilter] = useState('ALL');
 
   const { data: maintDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['maintenance-devices'],
@@ -641,16 +712,60 @@ function TabMaintenance() {
     refetchOnMount: true,
   });
 
-  const devices = maintDevices?.data ?? [];
+  const allDevices = maintDevices?.data ?? [];
+
+  // Options Type
+  const presentTypes = TYPE_ORDER.filter((t) => allDevices.some((d) => d.type === t));
+  const typeOptions = [
+    { value: 'ALL', label: 'Tous les types' },
+    ...presentTypes.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] ?? t })),
+  ];
+
+  const afterType = typeFilter === 'ALL' ? allDevices : allDevices.filter((d) => d.type === typeFilter);
+
+  // Options Modèle (parmi devices après filtre type)
+  const presentModelKeys = [...new Set(afterType.map((d) => `${d.brand}|${d.model}`))];
+  const modelOptions = [
+    { value: 'ALL', label: 'Tous les modèles' },
+    ...presentModelKeys.map((k) => {
+      const [brand, model] = k.split('|');
+      return { value: k, label: `${brand} ${model}` };
+    }),
+  ];
+
+  const devices = modelFilter === 'ALL' ? afterType : afterType.filter((d) => `${d.brand}|${d.model}` === modelFilter);
+  const isFiltered = typeFilter !== 'ALL' || modelFilter !== 'ALL';
+
+  const handleTypeChange = (v: string) => { setTypeFilter(v); setModelFilter('ALL'); };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Wrench size={16} className="text-[var(--text-muted)]" />
         <h2 className="text-sm font-semibold text-[var(--text-secondary)]">
-          Appareils en maintenance ({devices.length})
+          Appareils en maintenance ({devices.length}{isFiltered ? `/${allDevices.length}` : ''})
         </h2>
       </div>
+
+      {/* ─── Filtres ─────────────────────────────────────────── */}
+      {!isLoading && allDevices.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <AppSelect
+            value={typeFilter}
+            onChange={handleTypeChange}
+            options={typeOptions}
+            placeholder="Type"
+            className="!py-1.5 !text-xs w-44"
+          />
+          <AppSelect
+            value={modelFilter}
+            onChange={setModelFilter}
+            options={modelOptions}
+            placeholder="Modèle"
+            className="!py-1.5 !text-xs w-52"
+          />
+        </div>
+      )}
 
       {isLoading ? (
         <GlassCard padding="none">
@@ -663,7 +778,9 @@ function TabMaintenance() {
       ) : devices.length === 0 ? (
         <GlassCard padding="md" className="text-center py-12">
           <Wrench size={32} className="mx-auto mb-3 text-[var(--text-muted)] opacity-30" />
-          <p className="text-sm text-[var(--text-muted)]">Aucun appareil en maintenance</p>
+          <p className="text-sm text-[var(--text-muted)]">
+            {allDevices.length === 0 ? 'Aucun appareil en maintenance' : 'Aucun résultat pour ces filtres'}
+          </p>
         </GlassCard>
       ) : (
         <GlassCard padding="none">
@@ -671,44 +788,56 @@ function TabMaintenance() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-glass)]">
-                  {['Tag IT', 'N° Série', 'Modèle', 'Utilisateur', 'Site', 'Modifié le', ''].map((h) => (
+                  {['Tag IT', 'Type', 'Modèle', 'N° Série', 'Site', 'Deadline'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {devices.map((device, i) => (
-                  <motion.tr
-                    key={device.id}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.02 }}
-                    onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock' } })}
-                    className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
-                      {device.assetTag ?? '—'}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
-                      {device.serialNumber}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
-                      {device.brand} {device.model}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
-                      {device.assignedUser?.displayName ?? <span className="italic">Non assigné</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
-                      {device.site ?? '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
-                      {formatDate(device.updatedAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-[10px] text-primary">Historique →</span>
-                    </td>
-                  </motion.tr>
-                ))}
+                {devices.map((device, i) => {
+                  const Icon     = TYPE_ICONS[device.type as DeviceType] ?? HelpCircle;
+                  const deadline = device.maintenanceDeadline ? new Date(device.maintenanceDeadline) : null;
+                  const isOverdue = deadline !== null && deadline < new Date();
+                  return (
+                    <motion.tr
+                      key={device.id}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'maintenance' } })}
+                      className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
+                        {device.assetTag ?? '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                          <Icon size={13} className="flex-shrink-0" />
+                          <span className="whitespace-nowrap">{DEVICE_TYPE_LABELS[device.type as DeviceType] ?? device.type}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
+                        {device.brand} {device.model}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
+                        {device.serialNumber}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                        {device.site ?? '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {deadline ? (
+                          <span className={`text-xs font-medium ${isOverdue ? 'text-red-400' : 'text-[var(--text-secondary)]'}`}>
+                            {isOverdue && <span className="mr-1">⚠</span>}
+                            {formatDate(device.maintenanceDeadline!)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--text-muted)]">—</span>
+                        )}
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -721,7 +850,17 @@ function TabMaintenance() {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function Stock() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const [activeTab, setActiveTab] = useState<string>(
+    (location.state as any)?.tab ?? 'inventaire'
+  );
+
+  // Re-sync quand la navigation change (ex: retour depuis DeviceDetail ou clic Sidebar)
+  useEffect(() => {
+    const t = (location.state as any)?.tab;
+    setActiveTab(t ?? 'inventaire');
+  }, [location.state]);
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -743,7 +882,7 @@ export default function Stock() {
       </div>
 
       {/* ─── Onglets ─────────────────────────────────────────── */}
-      <Tabs.Root defaultValue="inventaire">
+      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] bg-white/[0.02] w-fit mb-6">
           {[
             { value: 'inventaire',  label: 'Inventaire' },

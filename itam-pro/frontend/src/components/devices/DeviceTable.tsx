@@ -37,8 +37,9 @@ const TYPE_ICONS: Record<DeviceType, React.ComponentType<{ size?: number; classN
 interface DeviceTableProps {
   devices: Device[];
   isLoading?: boolean;
-  onEdit:   (device: Device) => void;
-  onDelete: (device: Device) => void;
+  onEdit:    (device: Device) => void;
+  onDelete:  (device: Device) => void;
+  fromTab?:  string;
 }
 
 // ─── Colonne triable ──────────────────────────────────────────
@@ -64,7 +65,7 @@ function SortHeader({ field, label }: { field: string; label: string }) {
 
 // ─── Composant principal ──────────────────────────────────────
 
-export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: DeviceTableProps) {
+export default function DeviceTable({ devices, isLoading, onEdit, onDelete, fromTab }: DeviceTableProps) {
   const navigate = useNavigate();
 
   // Calcul des doublons : même assignedUserId sur ≥2 appareils actifs
@@ -130,7 +131,7 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete }: De
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02 }}
-                onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/devices' } })}
+                onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/devices', fromTab } })}
                 className="border-b border-[var(--border-glass)] hover:bg-white/[0.03] transition-colors group cursor-pointer"
               >
                 {/* Site */}

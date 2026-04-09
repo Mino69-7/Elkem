@@ -451,10 +451,11 @@ Les champs Achat, Garantie, Prix, Fournisseur, N° facture, Créé le, Modifié 
 - N° commande visible dans DeviceDetail (section Cycle de vie → maintenant dans widget Matériel)
 - State explicite sur tous les `<Link>` / `navigate()` vers `/devices/:id`
 
-**Règle de navigation validée :**
-> Tout `<Link>` ou `navigate()` vers `/devices/:id` DOIT passer `state={{ from: '<route_origine>' }}`.
-> DeviceDetail lit `location.state?.from ?? '/devices'` pour le bouton retour.
-> La Sidebar lit ce même `from` pour l'item actif quand on est sur `/devices/:id`.
+**Règle de navigation validée (mise à jour Phase 19) :**
+> Tout `navigate()` vers `/devices/:id` DOIT passer `state={{ from: '<route>', fromTab: '<tab>' }}`.
+> `DeviceDetail` lit `from` + `fromTab`, les renvoie via `goBack()` → `navigate(backTo, { state: { tab: fromTab } })`.
+> La Sidebar lit `from` pour l'item actif. Les pages réceptrices lisent `location.state?.tab` pour restaurer le bon onglet.
+> Voir tableau complet des valeurs `fromTab` en Phase 19.
 
 ### ✅ Phase 8 — Gestion utilisateurs inactive + édition équipement (2026-03-25)
 - Soft-delete utilisateurs : bouton "Désactiver" (MANAGER), `isActive: false`, avatar rouge + badge
@@ -847,9 +848,80 @@ La migration `20260408000000_add_model_id_to_device` a été appliquée avec suc
 
 ---
 
+### ✅ Phase 18 — PO Drawer + Recherche Historique (2026-04-09)
+
+#### `npx prisma generate` — résolu
+- Migration `20260408000000_add_model_id_to_device` avait été appliquée mais le client Prisma n'était pas régénéré (EPERM Windows — backend tourné)
+- **Symptôme** : drawer PO vide même avec `receivedCount > 0` (include `devices` silencieusement échoué)
+- **Fix** : arrêter le backend → `npx prisma generate` → relancer `pnpm dev` ✅
+- **Règle** : après toute migration `prisma migrate deploy`, toujours vérifier que `prisma generate` a bien tourné avant de déboguer des données manquantes
+
+#### `PO_LIST_INCLUDE` (purchaseOrder.controller.ts)
+- Nouveau const séparé de `PO_INCLUDE` — inclut `devices` avec select lean (id, serialNumber, status, type, brand, model, assetTag, hostname, assignedUser)
+- `listOrders` et `listHistory` utilisent `PO_LIST_INCLUDE` — create/update/cancel gardent `PO_INCLUDE` sans devices
+- `useOrderHistory` : `staleTime: 0` + `refetchOnMount: true` (évite cache périmé)
+
+#### `PODetailDrawer` (Orders.tsx)
+- Slide-over depuis la droite (Framer Motion spring `stiffness: 400, damping: 40`)
+- Liste tous les appareils reçus : SN mono, badge assetTag indigo, assignedUser, StatusBadge, ChevronRight
+- **Tous les statuts naviguent vers `/devices/{id}`** avec `state: { from: '/orders', fromTab }` — cohérence totale
+- Exception : `IN_STOCK` → `from: '/stock', fromTab: 'inventaire'` (l'appareil vit dans Stock)
+- Cartes non-navigables uniquement si statut `ORDERED` (cas théorique)
+- Prop `fromTab: string` passée depuis TabOrders (`'orders'`) ou TabHistory (`'history'`)
+
+#### TabHistory — barre de recherche
+- Input compact avec icône `Search` + bouton clear `X`
+- Filtre `useMemo` par référence CMD OU par SN d'un appareil lié
+- Badge "SN trouvé" (indigo) sur la commande si match vient du SN uniquement (pas de la référence)
+- `snMatchIds: Set<string>` calculé séparément pour distinguer ref-match vs SN-match
+- Cartes cliquables si `receivedCount > 0` → ouvre drawer
+
+#### TabOrders — drawer depuis commandes actives
+- Cartes PARTIAL (receivedCount > 0) cliquables → ouvre drawer
+- `e.stopPropagation()` sur boutons "Réceptionner" et "Annuler" — évite ouverture accidentelle
+- `selectedOrderId: string | null` (pas `PurchaseOrder`) → `selectedOrder` via `useMemo` depuis cache live — évite données périmées si refetch pendant que le drawer est ouvert
+
+---
+
+### ✅ Phase 19 — Navigation contextuelle avec restauration de tab (2026-04-09)
+
+#### Problème résolu
+Quand un utilisateur navigue vers la fiche d'un appareil depuis un onglet précis (ex: Stock › Maintenance), le bouton retour ramenait bien à la bonne page mais pas au bon onglet — l'utilisateur se retrouvait sur l'onglet par défaut.
+
+#### Pattern `fromTab` — règle de navigation mise à jour
+
+> Tout `navigate('/devices/:id')` DOIT passer `state={{ from: '<route>', fromTab: '<tab>' }}`.
+> `DeviceDetail` lit `fromTab` et le renvoie via `goBack()` → `navigate(backTo, { state: { tab: fromTab } })`.
+> Chaque page réceptrice lit `location.state?.tab` pour restaurer l'onglet actif.
+
+| Origine | `from` | `fromTab` |
+|---|---|---|
+| Stock › Inventaire | `/stock` | `inventaire` |
+| Stock › Maintenance | `/stock` | `maintenance` |
+| Stock › Déchets | `/stock` | `dechets` |
+| Utilisateurs (DeviceTable) | `/devices` | type actif (`LAPTOP`, `DESKTOP`…) |
+| Commandes › Onglet Commandes | `/orders` | `orders` |
+| Commandes › Historique | `/orders` | `history` |
+| Dashboard | `/dashboard` | — (pas de tab) |
+
+#### Pages réceptrices — tabs contrôlés
+- **Stock.tsx** : `useState` initialisé depuis `location.state?.tab ?? 'inventaire'` + `useEffect` de sync sur `location.state` — évite tab figé si l'utilisateur navigue vers `/stock` via la Sidebar sans état
+- **Orders.tsx** : même pattern, `Tabs.Root value={activeTab}` (était `defaultValue`) + `useEffect` sync
+- **Devices.tsx** : déjà contrôlé depuis session précédente ✅
+
+#### `DeviceTable.tsx`
+- Prop optionnelle `fromTab?: string` ajoutée
+- Passée depuis `Devices.tsx` : `fromTab={activeTab}` (le type d'appareil actif)
+
+#### `DeviceDetail.tsx`
+- `goBack()` helper : `navigate(backTo, { state: fromTab ? { tab: fromTab } : undefined })`
+- Remplace les 3 `navigate(backTo)` directs (bouton retour, état erreur, handleDelete)
+- `handleDelete` : wrapped dans `try/catch` — si la mutation échoue, pas de navigation fantôme (erreur visible via `deleteMut.error`)
+
+---
+
 ## En attente
 
-- ⏳ `npx prisma generate` à relancer (EPERM — backend doit être arrêté d'abord)
 - ⏳ PWA polish (service worker, manifest, icônes complètes)
 - ⏳ Azure App Registration + SSO Intune (en attente droits admin AD on-premise aussi)
 - ⏳ Page Dashboard — révision finale

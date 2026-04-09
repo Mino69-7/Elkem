@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import {
   Plus, LayoutGrid, LayoutList, ChevronLeft, ChevronRight,
   Laptop, Monitor, Smartphone, Tablet, Cpu, Server, Tv, Printer,
@@ -471,20 +471,24 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
 export default function Devices() {
   const [searchParams] = useSearchParams();
   const externalSearch = searchParams.get('search') ?? undefined;
+  const location = useLocation();
 
   const { filters, setFilters, viewMode, setViewMode } = useDeviceStore();
   const { user } = useAuthStore();
   const canEdit = user?.role === 'MANAGER' || user?.role === 'TECHNICIAN';
 
-  const [activeTab, setActiveTab] = useState<DeviceType>('LAPTOP');
+  const [activeTab, setActiveTab] = useState<DeviceType>(
+    ((location.state as any)?.tab as DeviceType) ?? 'LAPTOP'
+  );
 
   const { data, isLoading } = useDevices({ type: activeTab, assigned: true });
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [formOpen,     setFormOpen]     = useState(false);
   const [editing,      setEditing]      = useState<Device | null>(null);
-  const [deleting,     setDeleting]     = useState<Device | null>(null);
-  const [retireStatus, setRetireStatus] = useState('IN_STOCK');
+  const [deleting,             setDeleting]             = useState<Device | null>(null);
+  const [retireStatus,         setRetireStatus]         = useState('IN_STOCK');
+  const [maintenanceDeadline,  setMaintenanceDeadline]  = useState('');
 
   const qc        = useQueryClient();
   const updateMut = useUpdateDevice(editing?.id ?? '');
@@ -545,9 +549,14 @@ export default function Devices() {
 
   const handleDeleteConfirm = async () => {
     if (!deleting) return;
-    await deleteMut.mutateAsync({ id: deleting.id, status: retireStatus });
+    await deleteMut.mutateAsync({
+      id: deleting.id,
+      status: retireStatus,
+      maintenanceDeadline: retireStatus === 'IN_MAINTENANCE' ? maintenanceDeadline || undefined : undefined,
+    });
     setDeleting(null);
     setRetireStatus('IN_STOCK');
+    setMaintenanceDeadline('');
   };
 
   const devices    = data?.data       ?? [];
@@ -638,6 +647,7 @@ export default function Devices() {
             isLoading={isLoading}
             onEdit={openEdit}
             onDelete={setDeleting}
+            fromTab={activeTab}
           />
         ) : (
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -750,13 +760,27 @@ export default function Devices() {
                 </p>
               </div>
 
+              {retireStatus === 'IN_MAINTENANCE' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
+                    Deadline de retour <span className="text-[var(--text-muted)]">(optionnel)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={maintenanceDeadline}
+                    onChange={(e) => setMaintenanceDeadline(e.target.value)}
+                    className="input-glass w-full text-sm"
+                  />
+                </div>
+              )}
+
               <p className="text-xs text-[var(--text-muted)] border-t border-[var(--border-glass)] pt-3">
                 L'action sera tracée dans l'historique avec votre nom et la date.
               </p>
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setDeleting(null); setRetireStatus('IN_STOCK'); }}
+                  onClick={() => { setDeleting(null); setRetireStatus('IN_STOCK'); setMaintenanceDeadline(''); }}
                   className="btn-secondary flex-1 py-2 text-sm"
                 >
                   Annuler
