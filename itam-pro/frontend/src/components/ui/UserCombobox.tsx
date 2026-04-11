@@ -15,6 +15,8 @@ interface UserComboboxProps {
   onChange: (userId: string, user?: UserOption) => void;
   error?: boolean;
   placeholder?: string;
+  /** inline=true : résultats dans le flux normal (pour modals) — le conteneur grandit au lieu de déborder */
+  inline?: boolean;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -26,7 +28,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-export function UserCombobox({ value, displayValue, onChange, error, placeholder = 'Rechercher un utilisateur…' }: UserComboboxProps) {
+export function UserCombobox({ value, displayValue, onChange, error, placeholder = 'Rechercher un utilisateur…', inline = false }: UserComboboxProps) {
   const [query, setQuery]           = useState('');
   const [results, setResults]       = useState<UserOption[]>([]);
   const [isOpen, setIsOpen]         = useState(false);
@@ -165,16 +167,22 @@ export function UserCombobox({ value, displayValue, onChange, error, placeholder
         </div>
       )}
 
-      {/* Dropdown résultats */}
+      {/* Résultats — mode inline (dans le flux) ou dropdown absolu */}
       {isOpen && results.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] overflow-hidden shadow-xl"
-          style={{ background: '#1a1a2e' }}>
+        <div
+          className={
+            inline
+              ? 'mt-1 rounded-xl border border-[var(--border-glass)] overflow-hidden'
+              : 'absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] overflow-hidden shadow-xl'
+          }
+          style={{ background: 'var(--bg-secondary)' }}
+        >
           {results.map((user) => (
             <button
               key={user.id}
               type="button"
               onMouseDown={(e) => { e.preventDefault(); handleSelect(user); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/10 transition-colors group"
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/10 transition-colors"
             >
               <div className="w-7 h-7 rounded-full bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
                 <span className="text-xs font-semibold text-indigo-300">
@@ -182,11 +190,11 @@ export function UserCombobox({ value, displayValue, onChange, error, placeholder
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-white font-medium truncate">{user.displayName}</div>
-                <div className="text-xs text-slate-400 truncate">{user.email}</div>
+                <div className="text-sm text-[var(--text-primary)] font-medium truncate">{user.displayName}</div>
+                <div className="text-xs text-[var(--text-muted)] truncate">{user.email}</div>
               </div>
               {user.department && (
-                <span className="text-[10px] text-slate-500 flex-shrink-0">{user.department}</span>
+                <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{user.department}</span>
               )}
             </button>
           ))}
@@ -195,8 +203,14 @@ export function UserCombobox({ value, displayValue, onChange, error, placeholder
 
       {/* Aucun résultat */}
       {isOpen && !isLoading && results.length === 0 && debouncedQuery.length >= 2 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] px-3 py-3 text-sm text-[var(--text-muted)] shadow-xl"
-          style={{ background: '#1a1a2e' }}>
+        <div
+          className={
+            inline
+              ? 'mt-1 rounded-xl border border-[var(--border-glass)] px-3 py-3 text-sm text-[var(--text-muted)]'
+              : 'absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] px-3 py-3 text-sm text-[var(--text-muted)] shadow-xl'
+          }
+          style={{ background: 'var(--bg-secondary)' }}
+        >
           Aucun utilisateur trouvé pour « {debouncedQuery} »
         </div>
       )}

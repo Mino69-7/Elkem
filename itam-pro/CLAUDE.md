@@ -920,6 +920,72 @@ Quand un utilisateur navigue vers la fiche d'un appareil depuis un onglet préci
 
 ---
 
+### ✅ Phase 20 — Performance DB, assignation améliorée & UX Stock (2026-04-11)
+
+#### Index de performance — migration `20260411203816_add_performance_indexes`
+**Contexte** : Elkem compte ~15 000 utilisateurs et ~10 000 postes actifs, +400 postes/an en déchets. Sans index, PostgreSQL faisait des full table scans sur chaque requête.
+
+**39 index créés** sur 7 modèles :
+
+| Modèle | Index clés |
+|---|---|
+| `Device` | `[status]`, `[type]`, `[assignedUserId]`, `[status, type]`, `[assignedUserId, type]`, `[status, updatedAt]`, `[status, model]`, `[purchaseOrderId]`, `[modelId]`, `[warrantyExpiry]`, `[status, warrantyExpiry]`, `[updatedAt]`, `[createdAt]`, `[site]` |
+| `AuditLog` | `[deviceId]` *(critique)*, `[deviceId, createdAt]`, `[userId]`, `[action]`, `[createdAt]` |
+| `MaintenanceLog` | `[deviceId]`, `[deviceId, createdAt]`, `[resolved]` |
+| `Attachment` | `[deviceId]` |
+| `DeviceModel` | `[isActive]`, `[type, isActive]`, `[type]`, `[order]` |
+| `StockAlert` | `[deviceType]`, `[isActive]` |
+| `PurchaseOrder` | `[status]`, `[status, createdAt]`, `[createdAt]`, `[deviceModelId]`, `[createdById]` |
+| `User` | `[isActive]`, `[role]`, `[isActive, role]` |
+
+**Règle** : Prisma ne crée pas d'index automatiques sur les FK en PostgreSQL — toujours les déclarer explicitement avec `@@index`.
+
+**Procédure appliquée** :
+```bash
+cd itam-pro/backend
+npx prisma migrate dev --name add_performance_indexes
+# EPERM normal si backend tourne → arrêter backend → npx prisma generate → relancer
+```
+
+---
+
+#### Assign modal DeviceDetail — UserCombobox + Site
+
+**Problème** : le modal "Assigner" chargeait tous les utilisateurs via `userService.list()` et les affichait dans un `AppSelect` statique — incompatible avec 15 000 users.
+
+**Fix** :
+- `userService.list()` + `useQuery(['users'])` **supprimés** de `DeviceDetail.tsx`
+- Remplacés par `UserCombobox` (search-as-you-type, debounce 300ms, `GET /users?search=...`, 8 résultats max)
+- `UserCombobox` reçoit `inline` prop → résultats dans le flux du modal, pas en `absolute` (évite overflow hors modal et scroll forcé)
+- **Site ajouté** : `AppSelect` avec `SITE_OPTIONS` (9 sites Elkem, défaut `SUD`)
+- `handleAssign` fait 2 appels séquentiels : `PATCH /assign { userId }` puis `PUT /devices/:id { site }` + `qcMain.invalidateQueries(['device', id])`
+- Reset complet à la fermeture : `setSelectedUser('')` + `setAssignSite('SUD')`
+
+**Prop `inline` ajoutée à `UserCombobox`** :
+- `inline=false` (défaut) : dropdown `absolute` — comportement classique dans les formulaires
+- `inline=true` : résultats dans le flux normal — le conteneur parent grandit naturellement
+- Couleurs migrées de hardcoded `#1a1a2e` vers `var(--bg-secondary)` — compatible light/dark
+
+**État `qcMain`** : `useQueryClient()` ajouté dans le composant principal `DeviceDetail` (séparé des `qc` des sous-composants `Tab*` pour éviter confusion).
+
+---
+
+#### Bouton "Réinitialiser" — onglets Déchets et Maintenance (Stock.tsx)
+
+- Même pattern que `DeviceFilters.tsx` (page Utilisateurs) : bouton `RotateCcw` visible uniquement si `isFiltered === true`
+- **Déchets** : remet `typeFilter`, `modelFilter`, `statusFilter` à `'ALL'`
+- **Maintenance** : remet `typeFilter`, `modelFilter` à `'ALL'`
+- `RotateCcw` ajouté aux imports lucide de `Stock.tsx`
+
+---
+
+## Vérifications architecturales confirmées (2026-04-11)
+
+- **Zéro doublon de données** : chaque appareil physique = 1 ligne `Device`. Toutes les pages (Utilisateurs, Stock, Commandes, Déchets) sont des **vues filtrées** de la même table. Les commandes utilisent une FK `purchaseOrderId`, pas une copie.
+- **`prisma.device.create`** n'est appelé que dans 2 endroits : `createDevice` (controller direct) et `receiveDevice` (réception PO). Aucune création parasite.
+
+---
+
 ## En attente
 
 - ⏳ PWA polish (service worker, manifest, icônes complètes)

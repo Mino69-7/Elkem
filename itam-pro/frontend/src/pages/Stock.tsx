@@ -6,7 +6,7 @@ import {
   Plus, Package, ShoppingCart, AlertTriangle, CheckCircle,
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Cpu, MemoryStick, HardDrive,
-  Trash2, LayoutGrid, List, ArrowLeft, Tv, Server, Wrench,
+  Trash2, LayoutGrid, List, ArrowLeft, Tv, Server, Wrench, RotateCcw,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -597,6 +597,16 @@ function TabDechets() {
             placeholder="Statut"
             className="!py-1.5 !text-xs w-44"
           />
+          {isFiltered && (
+            <button
+              onClick={() => { setTypeFilter('ALL'); setModelFilter('ALL'); setStatusFilter('ALL'); }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs text-red-400/80 hover:text-red-400 hover:bg-red-500/8 border border-transparent hover:border-red-500/20 transition-all"
+              aria-label="Réinitialiser les filtres"
+            >
+              <RotateCcw size={11} />
+              Réinitialiser
+            </button>
+          )}
         </div>
       )}
 
@@ -764,6 +774,16 @@ function TabMaintenance() {
             placeholder="Modèle"
             className="!py-1.5 !text-xs w-52"
           />
+          {isFiltered && (
+            <button
+              onClick={() => { setTypeFilter('ALL'); setModelFilter('ALL'); }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs text-red-400/80 hover:text-red-400 hover:bg-red-500/8 border border-transparent hover:border-red-500/20 transition-all"
+              aria-label="Réinitialiser les filtres"
+            >
+              <RotateCcw size={11} />
+              Réinitialiser
+            </button>
+          )}
         </div>
       )}
 

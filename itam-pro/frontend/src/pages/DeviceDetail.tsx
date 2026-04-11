@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useDevice, useUpdateDevice, useDeleteDevice, useAssignDevice } from '../hooks/useDevices';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { userService } from '../services/user.service';
+import { UserCombobox } from '../components/ui/UserCombobox';
 import { useAuthStore } from '../stores/authStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { AppSelect } from '../components/ui/AppSelect';
@@ -19,8 +19,10 @@ import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import {
   formatDate, formatDateTime, formatPrice,
-  DEVICE_TYPE_LABELS, KEYBOARD_LAYOUT_LABELS, AUDIT_ACTION_LABELS,
+  DEVICE_TYPE_LABELS, KEYBOARD_LAYOUT_LABELS, AUDIT_ACTION_LABELS, ELKEM_SITES,
 } from '../utils/formatters';
+
+const SITE_OPTIONS = ELKEM_SITES.map((s) => ({ value: s.code, label: s.label }));
 import type { DeviceFormData } from '../services/device.service';
 import type { Device, DeviceType, DeviceModel } from '../types';
 import api from '../services/api';
@@ -1238,6 +1240,7 @@ export default function DeviceDetail() {
   const isManager = currentUser?.role === 'MANAGER';
 
   const { data: device, isLoading, error } = useDevice(id!);
+  const qcMain = useQueryClient();
 
   const [formOpen,   setFormOpen]   = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -1245,16 +1248,11 @@ export default function DeviceDetail() {
   const [retireStatus,         setRetireStatus]         = useState('IN_STOCK');
   const [retireDeadline,       setRetireDeadline]       = useState('');
   const [selectedUser, setSelectedUser] = useState('');
+  const [assignSite,   setAssignSite]   = useState('SUD');
 
   const updateMut = useUpdateDevice(id!);
   const deleteMut = useDeleteDevice();
   const assignMut = useAssignDevice(id!);
-
-  const { data: users = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => userService.list(),
-    enabled: assignOpen,
-  });
 
   const handleUpdate = async (data: DeviceFormData) => {
     await updateMut.mutateAsync(data);
@@ -1277,8 +1275,13 @@ export default function DeviceDetail() {
   const handleAssign = async () => {
     if (!selectedUser) return;
     await assignMut.mutateAsync(selectedUser);
+    // Poser le site via PUT séparé (même pattern qu'AssignFromPoolModal)
+    await api.put(`/devices/${id}`, { site: assignSite });
+    // Invalider la fiche device pour refléter le nouveau site
+    qcMain.invalidateQueries({ queryKey: ['device', id] });
     setAssignOpen(false);
     setSelectedUser('');
+    setAssignSite('SUD');
   };
 
   // ─── États ─────────────────────────────────────────────────
@@ -1614,16 +1617,43 @@ export default function DeviceDetail() {
             initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
           >
             <div className="glass-card p-6 max-w-sm w-full space-y-4 pointer-events-auto">
-              <h3 className="font-semibold text-[var(--text-primary)]">Assigner à un utilisateur</h3>
-              <AppSelect
-                value={selectedUser}
-                onChange={setSelectedUser}
-                placeholder="Sélectionner un utilisateur…"
-                className="w-full"
-                options={users.map((u) => ({ value: u.id, label: `${u.displayName} — ${u.email}` }))}
-              />
+              <div>
+                <h3 className="font-semibold text-[var(--text-primary)]">Assigner à un utilisateur</h3>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  Tapez au moins 2 caractères pour rechercher un utilisateur.
+                </p>
+              </div>
+
+              {/* Utilisateur */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">
+                  Utilisateur <span className="text-red-400">*</span>
+                </label>
+                <UserCombobox
+                  value={selectedUser}
+                  onChange={(userId) => setSelectedUser(userId)}
+                  placeholder="Rechercher un utilisateur…"
+                  inline
+                />
+              </div>
+
+              {/* Site */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">
+                  Site <span className="text-red-400">*</span>
+                </label>
+                <AppSelect
+                  value={assignSite}
+                  onChange={setAssignSite}
+                  options={SITE_OPTIONS}
+                />
+              </div>
+
               <div className="flex gap-3">
-                <button onClick={() => setAssignOpen(false)} className="btn-secondary flex-1 py-2 text-sm">
+                <button
+                  onClick={() => { setAssignOpen(false); setSelectedUser(''); setAssignSite('SUD'); }}
+                  className="btn-secondary flex-1 py-2 text-sm"
+                >
                   Annuler
                 </button>
                 <button

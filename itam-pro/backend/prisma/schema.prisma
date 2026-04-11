@@ -26,6 +26,11 @@ model User {
   assignedDevices        Device[]         @relation("AssignedUser")
   auditLogs              AuditLog[]
   createdPurchaseOrders  PurchaseOrder[]  @relation("POCreatedBy")
+
+  // Index : recherche utilisateurs actifs, filtres par rôle
+  @@index([isActive])
+  @@index([role])
+  @@index([isActive, role])
 }
 
 enum Role {
@@ -121,6 +126,28 @@ model Device {
   auditLogs       AuditLog[]
   maintenanceLogs MaintenanceLog[]
   attachments     Attachment[]
+
+  // ─── Index de performance ────────────────────────────────────
+  // Filtres simples très fréquents
+  @@index([status])
+  @@index([type])
+  @@index([assignedUserId])
+  @@index([site])
+  // Filtres combinés (page Utilisateurs : type + assigned, Stock : status + type)
+  @@index([status, type])
+  @@index([assignedUserId, type])
+  @@index([status, updatedAt])
+  // groupBy stock-summary (DeviceModel controller)
+  @@index([status, model])
+  // FK relations (Prisma ne crée pas d'index sur les FK en Postgres)
+  @@index([purchaseOrderId])
+  @@index([modelId])
+  // Tris courants
+  @@index([updatedAt])
+  @@index([createdAt])
+  // Garanties expirant (Dashboard)
+  @@index([warrantyExpiry])
+  @@index([status, warrantyExpiry])
 }
 
 enum DeviceType {
@@ -190,6 +217,13 @@ model AuditLog {
   comment     String?
   ipAddress   String?
   createdAt   DateTime    @default(now())
+
+  // Index CRITIQUES — chargés à chaque ouverture de fiche device + dashboard activity feed
+  @@index([deviceId])
+  @@index([deviceId, createdAt])  // historique trié par device
+  @@index([userId])               // FK + possible filtre par technicien
+  @@index([action])               // filtres par type d'action
+  @@index([createdAt])            // dashboard : activité récente ORDER BY createdAt DESC
 }
 
 enum AuditAction {
@@ -218,6 +252,11 @@ model MaintenanceLog {
   endDate     DateTime?
   resolved    Boolean   @default(false)
   createdAt   DateTime  @default(now())
+
+  // Index : chargé à chaque onglet Maintenance d'une fiche device
+  @@index([deviceId])
+  @@index([deviceId, createdAt])
+  @@index([resolved])             // filtres maintenances ouvertes/fermées
 }
 
 // ─── PIÈCES JOINTES ──────────────────────────────────────────
@@ -231,6 +270,9 @@ model Attachment {
   fileType    String
   fileSize    Int?
   createdAt   DateTime  @default(now())
+
+  // Index : chargé à chaque ouverture de fiche device
+  @@index([deviceId])
 }
 
 // ─── MODÈLES D'APPAREILS ─────────────────────────────────────
@@ -255,6 +297,11 @@ model DeviceModel {
   devices        Device[]
 
   @@unique([name, type])
+  // Index : filtres catalogue (isActive très fréquent), tri display
+  @@index([isActive])
+  @@index([type, isActive])   // listModels : WHERE isActive=true AND type=?
+  @@index([type])             // stockSummary ORDER BY type
+  @@index([order])            // tri d'affichage ORDER BY order ASC
 }
 
 // ─── ALERTES STOCK ───────────────────────────────────────────
@@ -266,6 +313,10 @@ model StockAlert {
   isActive    Boolean     @default(true)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+
+  // Index : getTriggered filtre WHERE isActive=true, upsert sur deviceType
+  @@index([deviceType])
+  @@index([isActive])
 }
 
 // ─── COMMANDES D'ACHAT ───────────────────────────────────────
@@ -285,6 +336,13 @@ model PurchaseOrder {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   devices         Device[]
+
+  // Index : listOrders (status NOT IN ...), listHistory (ORDER BY createdAt), FK relations
+  @@index([status])
+  @@index([status, createdAt])   // liste active triée
+  @@index([createdAt])           // historique trié ORDER BY createdAt DESC
+  @@index([deviceModelId])       // FK DeviceModel
+  @@index([createdById])         // FK User (manager)
 }
 
 enum POStatus {
