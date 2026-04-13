@@ -986,8 +986,95 @@ npx prisma migrate dev --name add_performance_indexes
 
 ---
 
+### ✅ Phase 21 — UX globale, recherche intelligente & Admin (2026-04-13)
+
+#### TopBar — dropdown recherche globale via React Portal
+
+**Problème** : le dropdown de recherche apparaissait derrière le contenu des pages.  
+**Cause** : `<main overflow-y-auto>` + `<motion.div opacity>` créent des stacking contexts CSS qui écrasent tout `z-index` interne à TopBar.  
+**Fix** : `createPortal(..., document.body)` pour les deux dropdowns (résultats + "aucun résultat"), positionnés en `fixed` via `containerRef.getBoundingClientRect()`. `z-index: 9999`.
+
+**Second bug** : les clics sur les résultats ne déclenchaient rien.  
+**Cause** : le handler `mousedown` sur `document` vérifiait `containerRef.contains(target)` → le portal est hors de l'arbre DOM de containerRef → `setDropdownOpen(false)` avant que `click` arrive.  
+**Fix** : `portalRef` ajouté sur le div portal, handler exclut `containerRef` ET `portalRef`.
+
+#### TopBar — affichage et tags des résultats
+
+- **Affichage appareil** : SN (police mono, ligne principale) + `{brand} {model} · {utilisateur}` (ligne secondaire). Avant : `{brand} {model}` uniquement.
+- **Tags de statut** corrigés — tous affichaient "Stock" :
+
+| Statut | Tag | Couleur | Destination clic | Retour |
+|---|---|---|---|---|
+| ASSIGNED / LOANER | Actif | Vert émeraude | DeviceDetail | Utilisateurs, onglet type |
+| PENDING_RETURN | À récupérer | Ambre | DeviceDetail | Utilisateurs, onglet type |
+| IN_STOCK / ORDERED | Stock | Indigo | DeviceDetail | Stock › Inventaire |
+| IN_MAINTENANCE | **Maintenance** | **Orange** | DeviceDetail | Stock › Maintenance |
+| RETIRED | **Déchet** | **Rouge** | DeviceDetail | Stock › Déchets |
+| LOST | **Perdu** | **Rouge** | DeviceDetail | Stock › Déchets |
+| STOLEN | **Volé** | **Rouge** | DeviceDetail | Stock › Déchets |
+
+La navigation (`getDeviceNavState`) était déjà correcte — seuls les labels/couleurs ont changé.
+
+#### Recherche "commence par" — tous les dropdowns dynamiques
+
+**Problème** : taper "484" remontait tous les SN contenant un 4 ou un 8.  
+**Fix backend** : `contains` → `startsWith` dans `device.controller.ts` et `user.controller.ts`.  
+**Cas spécial `displayName`** : deux clauses — `startsWith: search` (prénom en premier) + `contains: ' ' + search` (nom de famille) — pour trouver "Jean **Dupont**" en tapant "Dup".  
+**Portée** : TopBar, UserCombobox, WorkstationModal, AssignFromPoolModal, PhoneModal — tous ces dropdowns passent par les mêmes deux endpoints.
+
+#### Dark mode — fond violet / bleu marine
+
+Deux orbes chaudes supprimées du gradient `[data-theme="dark"] body::before` :
+- Orange `rgba(245,158,11,0.40)` → Indigo profond `rgba(79,70,229,0.40)`
+- Rose `rgba(236,72,153,0.28)` → Bleu marine `rgba(30,58,138,0.35)`
+
+Les effets liquid glass, variables CSS, widgets et mode clair sont inchangés.
+
+#### Page Admin (Users.tsx)
+
+- Titre `Utilisateurs` → **`Admin`**
+- Filtre rôle : `AppSelect` pleine largeur → `FilterPill` compact (icône `ShieldCheck`, option "Tous" intégrée nativement, réinitialisation possible)
+- Recherche : style pill compact `w-44 → focus:w-56` avec clear button, identique aux autres pages
+- Badge département **supprimé** des cartes (non utilisé, non configurable)
+
+---
+
+## Architecture SSO / synchronisation utilisateurs — décisions validées (2026-04-13)
+
+### Prérequis obligatoire : App Registration Azure / Entra ID
+
+Il est impossible de se connecter avec un compte @elkem.com sans une **App Registration** préalable dans Entra ID. Cette étape nécessite un admin du tenant Elkem.
+
+Permissions Graph à déclarer :
+| Permission | Type | Usage |
+|---|---|---|
+| `User.Read` | Delegated | Lire son propre profil à la connexion |
+| `User.Read.All` | Application | Importer tous les users AD (sync complète) |
+| `DeviceManagementManagedDevices.Read.All` | Application | Lire les appareils Intune |
+
+Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, puis `AUTH_MODE=sso`.
+
+### Deux populations distinctes — règle fondamentale
+
+| Population | Rôle | Peut se connecter | Source |
+|---|---|---|---|
+| Équipe IT (3-5 personnes) | MANAGER / TECHNICIAN / VIEWER | ✅ Oui — login Microsoft | Créés manuellement page Admin |
+| Employés Elkem (tout le parc) | Bénéficiaires d'appareils | ❌ Non | Importés depuis AD/Graph API |
+
+**Mécanisme de sécurité** : Microsoft confirme l'identité, mais le backend vérifie que l'email existe dans la table `User` (IT uniquement) avant d'émettre le JWT. Un @elkem.com non dans cette liste = 403 immédiat même avec token Microsoft valide.
+
+### À implémenter côté backend (non fait)
+
+1. **Provisioning à la connexion** (`auth.controller.ts`) : si l'email entrant est dans la table `User` IT, mettre à jour `displayName` depuis le token Microsoft.
+2. **Import employés depuis Graph** (`intune.service.ts`) : `GET /graph/v1.0/users` → upsert dans la table des bénéficiaires (≠ table `User` IT). Bouton dans page Sync Intune + cron nightly.
+3. **Page Login** : remplacer formulaire email/mdp par un unique bouton "Se connecter avec Microsoft" quand `AUTH_MODE=sso`.
+
+---
+
 ## En attente
 
+- ⏳ App Registration Azure Entra ID (action admin IT Elkem requise)
+- ⏳ Backend SSO : provisioning à la connexion + import employés Graph API
+- ⏳ Page Login : bouton Microsoft uniquement en mode SSO
 - ⏳ PWA polish (service worker, manifest, icônes complètes)
-- ⏳ Azure App Registration + SSO Intune (en attente droits admin AD on-premise aussi)
 - ⏳ Page Dashboard — révision finale
