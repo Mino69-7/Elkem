@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Laptop, Shield, Eye, UserX, Loader2, X } from 'lucide-react';
+import { Search, Laptop, Shield, Eye, UserX, Loader2, X, ShieldCheck } from 'lucide-react';
 import { userService } from '../services/user.service';
 import { useAuthStore } from '../stores/authStore';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
-import { AppSelect } from '../components/ui/AppSelect';
+import { FilterPill } from '../components/devices/DeviceFilters';
 import { ROLE_LABELS } from '../utils/formatters';
 import type { Role, User } from '../types';
 import api from '../services/api';
@@ -25,7 +25,7 @@ const ROLE_ICONS: Record<Role, React.ComponentType<{ size?: number }>> = {
 
 export default function Users() {
   const [search,    setSearch]    = useState('');
-  const [role,      setRole]      = useState<Role | ''>('');
+  const [role,      setRole]      = useState<Role | undefined>(undefined);
   const [deactivating, setDeactivating] = useState<User | null>(null);
 
   const { user: currentUser } = useAuthStore();
@@ -34,7 +34,7 @@ export default function Users() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users', search, role],
-    queryFn:  () => userService.list({ search: search || undefined, role: role || undefined }),
+    queryFn:  () => userService.list({ search: search || undefined, role: role }),
     staleTime: 30_000,
   });
 
@@ -52,7 +52,7 @@ export default function Users() {
       {/* ─── En-tête ─────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[var(--text-primary)]">Utilisateurs</h1>
+          <h1 className="text-xl font-bold text-[var(--text-primary)]">Admin</h1>
           <p className="text-sm text-[var(--text-muted)] mt-0.5">
             {isLoading ? '…' : `${users.length} utilisateur${users.length > 1 ? 's' : ''}`}
           </p>
@@ -60,26 +60,43 @@ export default function Users() {
       </div>
 
       {/* ─── Filtres ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-48 max-w-72">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Recherche compacte */}
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher..."
-            className="input-glass pl-9 py-2 text-sm w-full"
+            placeholder="Rechercher…"
+            className="input-glass pl-8 pr-7 py-1.5 text-xs rounded-full w-44 focus:w-56 transition-all duration-200"
+            aria-label="Rechercher un compte"
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              aria-label="Effacer"
+            >
+              <X size={11} />
+            </button>
+          )}
         </div>
-        <AppSelect
+
+        {/* Séparateur */}
+        <div className="w-px h-4 bg-[var(--border-glass)]" />
+
+        {/* Filtre rôle — pill compact */}
+        <FilterPill
+          icon={<ShieldCheck size={11} />}
+          label="Rôle"
           value={role}
-          onChange={(v) => setRole(v as Role | '')}
-          placeholder="Tous les rôles"
           options={[
             { value: 'MANAGER',    label: 'Manager'    },
             { value: 'TECHNICIAN', label: 'Technicien' },
             { value: 'VIEWER',     label: 'Lecteur'    },
           ]}
+          onChange={(v) => setRole(v as Role | undefined)}
         />
       </div>
 
@@ -131,16 +148,11 @@ export default function Users() {
                       <p className="text-xs text-[var(--text-muted)] truncate">{u.email}</p>
                       {u.jobTitle && <p className="text-xs text-[var(--text-muted)] truncate">{u.jobTitle}</p>}
 
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <div className="flex items-center gap-2 mt-2">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[u.role]}`}>
                           <RoleIcon size={10} />
                           {ROLE_LABELS[u.role]}
                         </span>
-                        {u.department && (
-                          <span className="text-xs text-[var(--text-muted)] bg-white/5 px-2 py-0.5 rounded-full">
-                            {u.department}
-                          </span>
-                        )}
                       </div>
                     </div>
 

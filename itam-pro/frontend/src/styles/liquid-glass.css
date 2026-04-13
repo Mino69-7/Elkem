@@ -34,14 +34,14 @@ body::before {
 }
 
 [data-theme="dark"] body::before {
-  /* ── DARK MODE — espace profond + orbes vives (VisionOS) ── */
+  /* ── DARK MODE — espace profond violet / bleu marine ── */
   background:
     radial-gradient(ellipse 80% 72% at 18% 36%,  rgba(99,  66, 245, 0.70) 0%, transparent 58%),
-    radial-gradient(ellipse 66% 62% at 82% 14%,  rgba(6,  182, 212, 0.52) 0%, transparent 56%),
-    radial-gradient(ellipse 74% 64% at 65% 86%,  rgba(245,158,  11, 0.40) 0%, transparent 54%),
+    radial-gradient(ellipse 66% 62% at 82% 14%,  rgba(6,  182, 212, 0.45) 0%, transparent 56%),
+    radial-gradient(ellipse 74% 64% at 65% 86%,  rgba(79,  70, 229, 0.40) 0%, transparent 54%),
     radial-gradient(ellipse 62% 60% at 10% 82%,  rgba(139, 92, 246, 0.50) 0%, transparent 56%),
-    radial-gradient(ellipse 56% 54% at 92% 68%,  rgba(236, 72, 153, 0.28) 0%, transparent 50%),
-    radial-gradient(ellipse 45% 45% at 48% 50%,  rgba(99,  66, 245, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 56% 54% at 92% 68%,  rgba(30,  58, 138, 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse 45% 45% at 48% 50%,  rgba(99,  66, 245, 0.14) 0%, transparent 70%),
     #02020a;
 }
 
