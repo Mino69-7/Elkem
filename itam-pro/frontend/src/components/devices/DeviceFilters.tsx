@@ -21,7 +21,7 @@ interface FilterPillProps {
   disabled?: boolean;
 }
 
-function FilterPill({ icon, label, value, options, onChange, disabled }: FilterPillProps) {
+export function FilterPill({ icon, label, value, options, onChange, disabled }: FilterPillProps) {
   const isActive = value !== undefined;
   const displayLabel = isActive ? (options.find((o) => o.value === value)?.label ?? label) : label;
 
@@ -62,7 +62,7 @@ function FilterPill({ icon, label, value, options, onChange, disabled }: FilterP
             'border border-[var(--border-glass)]',
             'animate-in fade-in-0 zoom-in-95'
           )}
-          style={{ background: 'var(--bg-secondary)' }}
+          style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
         >
           <Select.Viewport className="p-1 overflow-y-auto max-h-60">
             {/* Option "tous" */}

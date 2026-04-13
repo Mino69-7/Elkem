@@ -20,45 +20,62 @@ const NAV_ITEMS = [
   { to: '/reports',   icon: BarChart3,       label: 'Rapports' },
 ];
 
+/* Pill animée derrière l'item actif */
+const ActivePill = ({ layoutId }: { layoutId: string }) => (
+  <motion.div
+    className="absolute inset-0 rounded-xl"
+    layoutId={layoutId}
+    style={{
+      background: 'rgba(99, 102, 241, 0.13)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      border: '1px solid rgba(99, 102, 241, 0.22)',
+      boxShadow:
+        'inset 0 1px 0 rgba(255,255,255,0.40), 0 2px 10px rgba(99,102,241,0.18)',
+    }}
+    transition={{ type: 'spring', stiffness: 480, damping: 36 }}
+  />
+);
+
 interface SidebarProps {
-  /** Mode drawer mobile — toujours étendu, sans bouton collapse */
   mobile?: boolean;
   onClose?: () => void;
 }
 
 export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const { sidebarCollapsed, toggleSidebarCollapse, theme, toggleTheme } = useUIStore();
-  const { user, logout } = useAuthStore();
+  const { logout } = useAuthStore();
   const location = useLocation();
 
-  // En mode mobile le drawer est toujours étendu
   const collapsed = mobile ? false : sidebarCollapsed;
   const sidebarWidth = collapsed ? 64 : 240;
 
-  // Quand on navigue vers /devices/:id depuis une autre section (ex: Stock),
-  // on utilise location.state.from pour garder le contexte actif correct dans la sidebar
   const fromState = (location.state as { from?: string } | null)?.from;
   const isDeviceDetail = /^\/devices\/[a-zA-Z0-9-]+$/.test(location.pathname);
   const effectivePath = isDeviceDetail && fromState ? fromState : location.pathname;
 
-  const handleNavClick = () => {
-    if (mobile) onClose?.();
-  };
+  const handleNavClick = () => { if (mobile) onClose?.(); };
+
+  /* layoutId de la pill — séparé entre mobile et desktop pour éviter
+     les conflits Framer Motion quand les deux existent simultanément */
+  const pillId = mobile ? 'nav-pill-mobile' : 'nav-pill';
 
   return (
     <Tooltip.Provider delayDuration={200}>
       <motion.aside
         className={clsx(
-          'flex flex-col flex-shrink-0 h-screen overflow-hidden border-r border-[var(--border-glass)]',
-          mobile ? 'flex z-40' : 'hidden lg:flex relative z-20'
+          'sidebar-glass flex flex-col flex-shrink-0 overflow-hidden',
+          /* Desktop flottant : arrondi, ne touche pas les bords (le parent a p-3) */
+          mobile
+            ? 'h-screen rounded-none'
+            : 'h-full rounded-[28px]'
         )}
-        style={{ background: 'var(--bg-secondary)' }}
         animate={{ width: sidebarWidth }}
         transition={{ type: 'spring', stiffness: 400, damping: 40 }}
         aria-label="Navigation principale"
       >
-        {/* ─── Header logo ─────────────────────────────────── */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-[var(--border-glass)] flex-shrink-0">
+        {/* ─── Header logo ──────────────────────────────────────── */}
+        <div className="flex items-center justify-between h-16 px-4 border-b border-[var(--glass-border)] flex-shrink-0">
           <AnimatePresence mode="wait">
             {!collapsed && (
               <motion.div
@@ -70,7 +87,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 transition={{ duration: 0.2 }}
               >
                 <div
-                  className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex-shrink-0 flex items-center justify-center"
+                  className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex-shrink-0 flex items-center justify-center shadow-lg"
                   aria-hidden="true"
                 >
                   <Laptop size={16} className="text-white" />
@@ -81,7 +98,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             {collapsed && (
               <motion.div
                 key="logo-icon"
-                className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center mx-auto"
+                className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center mx-auto shadow-lg"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -92,11 +109,11 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
             )}
           </AnimatePresence>
 
-          {/* Bouton fermer (mobile) ou collapse (desktop) */}
+          {/* Bouton fermer / collapse */}
           {mobile ? (
             <button
               onClick={onClose}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors flex-shrink-0"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/8 transition-colors flex-shrink-0"
               aria-label="Fermer le menu"
             >
               <X size={16} />
@@ -104,7 +121,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           ) : (
             <button
               onClick={toggleSidebarCollapse}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors flex-shrink-0"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/8 transition-colors flex-shrink-0"
               aria-label={collapsed ? 'Agrandir la sidebar' : 'Réduire la sidebar'}
             >
               {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -112,35 +129,9 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           )}
         </div>
 
-        {/* ─── Profil utilisateur ──────────────────────────── */}
-        {!collapsed && (
-          <motion.div
-            className="px-4 py-3 border-b border-[var(--border-glass)] flex-shrink-0"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-400 to-cyan-400 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
-                aria-hidden="true"
-              >
-                {user?.displayName?.charAt(0) ?? 'U'}
-              </div>
-              <div className="overflow-hidden">
-                <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                  {user?.displayName ?? 'Utilisateur'}
-                </p>
-                <p className="text-xs text-[var(--text-muted)] truncate">
-                  {user?.role ?? 'VIEWER'} · {user?.department ?? 'IT'}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
 
-        {/* ─── Navigation ──────────────────────────────────── */}
-        <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto" aria-label="Menu principal">
+        {/* ─── Navigation ────────────────────────────────────────── */}
+        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto" aria-label="Menu principal">
           {NAV_ITEMS.map((item) => {
             const isActive = effectivePath.startsWith(item.to);
             const Icon = item.icon;
@@ -152,16 +143,15 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     <NavLink
                       to={item.to}
                       onClick={handleNavClick}
-                      className={clsx(
-                        'flex items-center justify-center w-full h-10 rounded-xl transition-all duration-200',
-                        isActive
-                          ? 'bg-primary/15 text-primary'
-                          : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
-                      )}
+                      className="relative flex items-center justify-center w-full h-10 rounded-xl"
+                      style={{
+                        color: isActive ? 'var(--color-primary)' : 'var(--text-muted)',
+                      }}
                       aria-label={item.label}
                       aria-current={isActive ? 'page' : undefined}
                     >
-                      <Icon size={18} />
+                      {isActive && <ActivePill layoutId={pillId} />}
+                      <Icon size={18} className="relative z-10" />
                     </NavLink>
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
@@ -184,47 +174,46 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 to={item.to}
                 onClick={handleNavClick}
                 className={clsx(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                  'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150',
                   isActive
-                    ? 'bg-primary/15 text-primary'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                    ? 'text-primary'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >
-                <Icon size={18} />
-                <span>{item.label}</span>
-                {isActive && (
-                  <motion.div
-                    className="ml-auto w-1.5 h-1.5 rounded-full bg-primary"
-                    layoutId={mobile ? 'activeIndicatorMobile' : 'activeIndicator'}
-                    aria-hidden="true"
-                  />
-                )}
+                {isActive && <ActivePill layoutId={pillId} />}
+                <Icon size={18} className="relative z-10 flex-shrink-0" />
+                <span className="relative z-10">{item.label}</span>
               </NavLink>
             );
           })}
         </nav>
 
-        {/* ─── Section basse ───────────────────────────────── */}
-        <div className="px-2 py-3 border-t border-[var(--border-glass)] space-y-1 flex-shrink-0">
+        {/* ─── Section basse ─────────────────────────────────────── */}
+        <div className="px-2 py-3 border-t border-[var(--glass-border)] space-y-0.5 flex-shrink-0">
           <NavLink
             to="/settings"
             onClick={handleNavClick}
             className={({ isActive }) => clsx(
-              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+              'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150',
               isActive
-                ? 'bg-primary/15 text-primary'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                ? 'text-primary'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             )}
             aria-label="Paramètres"
           >
-            <Settings size={18} />
-            {!collapsed && <span>Paramètres</span>}
+            {({ isActive }) => (
+              <>
+                {isActive && <ActivePill layoutId={pillId} />}
+                <Settings size={18} className="relative z-10 flex-shrink-0" />
+                {!collapsed && <span className="relative z-10">Paramètres</span>}
+              </>
+            )}
           </NavLink>
 
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-all duration-200"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/6 transition-colors duration-150"
             aria-label={theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -237,7 +226,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
 
           <button
             onClick={() => { logout(); }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/5 transition-all duration-200"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-500/8 transition-colors duration-150"
             aria-label="Se déconnecter"
           >
             <LogOut size={18} />

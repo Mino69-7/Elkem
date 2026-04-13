@@ -529,8 +529,8 @@ export default function DeviceForm({
                           </div>
                           {snResults.length > 0 && (
                             <div
-                              className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--border-glass)] overflow-hidden shadow-xl max-h-44 overflow-y-auto"
-                              style={{ background: 'var(--bg-secondary)' }}
+                              className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--glass-border)] overflow-hidden shadow-xl max-h-44 overflow-y-auto"
+                              style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
                             >
                               {snResults.map((r) => (
                                 <button
@@ -783,8 +783,10 @@ export default function DeviceForm({
               <motion.div
                 className="w-full max-w-lg flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
                 style={{
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-glass)',
+                  background: 'var(--surface-primary)',
+                  backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))',
+                  WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))',
+                  border: '1px solid var(--glass-border)',
                   maxHeight: '90vh',
                 }}
                 initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -800,7 +802,7 @@ export default function DeviceForm({
             /* ── Drawer latéral (défaut) ── */
             <motion.div
               className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg flex flex-col shadow-2xl"
-              style={{ background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border-glass)' }}
+              style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', borderLeft: '1px solid var(--glass-border)' }}
               initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
               transition={{ type: 'spring', stiffness: 400, damping: 40 }}
             >

@@ -12,10 +12,14 @@ export async function listUsers(req: Request, res: Response, next: NextFunction)
     if (active !== 'all') where.isActive = active !== 'false';
     if (role) where.role = role;
     if (search) {
+      // "Commence par" : displayName/email/department matchent si le champ commence par le terme.
+      // Pour displayName on ajoute aussi " term" (précédé d'un espace) pour matcher le prénom
+      // ou le nom quand l'autre vient en premier — ex: "Jean Dupont" → tape "Dup" → match.
       where.OR = [
-        { displayName: { contains: search, mode: 'insensitive' } },
-        { email:       { contains: search, mode: 'insensitive' } },
-        { department:  { contains: search, mode: 'insensitive' } },
+        { displayName: { startsWith: search, mode: 'insensitive' } },
+        { displayName: { contains:   ` ${search}`, mode: 'insensitive' } },
+        { email:       { startsWith: search, mode: 'insensitive' } },
+        { department:  { startsWith: search, mode: 'insensitive' } },
       ];
     }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { clsx } from 'clsx';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import {
   Plus, LayoutGrid, LayoutList, ChevronLeft, ChevronRight,
@@ -197,7 +198,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
         >
           <motion.div
             className="w-full max-w-md flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
-            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', maxHeight: '90vh' }}
+            style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', border: '1px solid var(--glass-border)', maxHeight: '90vh' }}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -252,7 +253,7 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                     {showDrop && search.length >= 1 && (
                       <div
                         className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
-                        style={{ background: 'var(--bg-secondary)' }}
+                        style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
                       >
                         {isFetching ? (
                           <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
@@ -324,29 +325,35 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                         {isLab && (
                           <div className="space-y-1.5">
                             <label className="text-xs text-[var(--text-secondary)]">Type de poste</label>
-                            <div className="flex rounded-xl border border-[var(--border-glass)] overflow-hidden">
-                              <button
-                                type="button"
-                                onClick={() => setLabType('LAB')}
-                                className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                                  labType === 'LAB'
-                                    ? 'bg-primary/15 text-primary'
-                                    : 'text-[var(--text-muted)] hover:bg-white/5'
-                                }`}
-                              >
-                                Labo
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setLabType('INDUS')}
-                                className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                                  labType === 'INDUS'
-                                    ? 'bg-primary/15 text-primary'
-                                    : 'text-[var(--text-muted)] hover:bg-white/5'
-                                }`}
-                              >
-                                Indus
-                              </button>
+                            <div className="toggle-glass">
+                              {(['LAB', 'INDUS'] as const).map((lt) => (
+                                <button
+                                  key={lt}
+                                  type="button"
+                                  onClick={() => setLabType(lt)}
+                                  className={`relative flex-1 py-2 text-xs font-medium transition-colors duration-150 ${
+                                    labType === lt
+                                      ? 'text-primary'
+                                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                  }`}
+                                >
+                                  {labType === lt && (
+                                    <motion.div
+                                      className="absolute inset-0 rounded-[12px]"
+                                      layoutId="assign-labtype-pill"
+                                      style={{
+                                        background: 'rgba(99,102,241,0.13)',
+                                        backdropFilter: 'blur(12px)',
+                                        WebkitBackdropFilter: 'blur(12px)',
+                                        border: '1px solid rgba(99,102,241,0.22)',
+                                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
+                                      }}
+                                      transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                                    />
+                                  )}
+                                  <span className="relative z-10">{lt === 'LAB' ? 'Labo' : 'Indus'}</span>
+                                </button>
+                              ))}
                             </div>
                           </div>
                         )}
@@ -578,21 +585,37 @@ export default function Devices() {
         </div>
 
         <div className="sm:ml-auto flex items-center gap-2">
-          <div className="flex rounded-xl border border-[var(--border-glass)] overflow-hidden">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`p-2 transition-colors ${viewMode === 'table' ? 'bg-primary/15 text-primary' : 'text-[var(--text-muted)] hover:bg-white/5'}`}
-              aria-label="Vue tableau" aria-pressed={viewMode === 'table'}
-            >
-              <LayoutList size={16} />
-            </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 transition-colors ${viewMode === 'grid' ? 'bg-primary/15 text-primary' : 'text-[var(--text-muted)] hover:bg-white/5'}`}
-              aria-label="Vue grille" aria-pressed={viewMode === 'grid'}
-            >
-              <LayoutGrid size={16} />
-            </button>
+          <div className="toggle-glass">
+            {([
+              { mode: 'table', Icon: LayoutList, label: 'Vue tableau' },
+              { mode: 'grid',  Icon: LayoutGrid,  label: 'Vue grille' },
+            ] as const).map(({ mode, Icon, label }) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`relative p-2 transition-colors duration-150 ${
+                  viewMode === mode ? 'text-primary' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                aria-label={label}
+                aria-pressed={viewMode === mode}
+              >
+                {viewMode === mode && (
+                  <motion.div
+                    className="absolute inset-0 rounded-[10px]"
+                    layoutId="view-mode-pill"
+                    style={{
+                      background: 'rgba(99,102,241,0.13)',
+                      backdropFilter: 'blur(12px)',
+                      WebkitBackdropFilter: 'blur(12px)',
+                      border: '1px solid rgba(99,102,241,0.22)',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
+                    }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                  />
+                )}
+                <Icon size={16} className="relative z-10" />
+              </button>
+            ))}
           </div>
 
           {canEdit && (
@@ -605,27 +628,35 @@ export default function Devices() {
       </div>
 
       {/* ─── Toggle types d'équipements ──────────────────────── */}
-      <div className="overflow-x-auto pb-0.5">
-        <div className="flex gap-1 min-w-max">
+      <div className="overflow-x-auto pb-1">
+        <div className="tabs-glass" style={{ display: 'flex', gap: '3px', width: 'fit-content' }}>
           {TYPE_TABS.map(({ type, label, Icon }) => {
             const isActive = activeTab === type;
             return (
               <button
                 key={type}
                 onClick={() => handleTabChange(type)}
-                className={`
-                  relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium
-                  transition-colors whitespace-nowrap select-none
-                  ${isActive
+                data-state={isActive ? 'active' : 'inactive'}
+                className={clsx(
+                  'relative flex items-center gap-2 px-3.5 py-2 rounded-[18px] text-xs font-medium',
+                  'transition-colors whitespace-nowrap select-none outline-none',
+                  isActive
                     ? 'text-primary'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'}
-                `}
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                )}
               >
                 {isActive && (
                   <motion.div
                     layoutId="type-tab-bg"
-                    className="absolute inset-0 rounded-xl bg-primary/12 border border-primary/25"
-                    transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+                    className="absolute inset-0 rounded-[18px]"
+                    style={{
+                      background: 'rgba(99,102,241,0.13)',
+                      backdropFilter: 'blur(12px)',
+                      WebkitBackdropFilter: 'blur(12px)',
+                      border: '1px solid rgba(99,102,241,0.22)',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 2px 8px rgba(99,102,241,0.12)',
+                    }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 38 }}
                   />
                 )}
                 <Icon size={13} className="relative z-10 flex-shrink-0" />

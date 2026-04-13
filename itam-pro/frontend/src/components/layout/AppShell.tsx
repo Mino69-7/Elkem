@@ -27,12 +27,17 @@ export default function AppShell() {
   const { sidebarOpen, setSidebarOpen } = useUIStore();
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    /* ─── Root : padding crée l'espace flottant autour de tout ─ */
+    <div
+      className="flex h-screen lg:p-3 lg:gap-3"
+      style={{ background: 'transparent' }}
+    >
+      {/* ─── Sidebar desktop — flottante, arrondie ─────────────── */}
+      <div className="hidden lg:flex flex-shrink-0">
+        <Sidebar />
+      </div>
 
-      {/* ─── Sidebar desktop ────────────────────────────────── */}
-      <Sidebar />
-
-      {/* ─── Sidebar mobile (drawer overlay) ────────────────── */}
+      {/* ─── Sidebar mobile (drawer overlay) ────────────────────── */}
       <AnimatePresence>
         {sidebarOpen && (
           <>
@@ -60,12 +65,12 @@ export default function AppShell() {
         )}
       </AnimatePresence>
 
-      {/* ─── Zone principale ─────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* ─── Zone principale — TopBar flottante + contenu arrondi ── */}
+      <div className="flex-1 flex flex-col min-w-0 lg:gap-3">
         <TopBar />
 
         <main
-          className="flex-1 overflow-y-auto pb-16 lg:pb-0"
+          className="flex-1 overflow-y-auto overflow-x-hidden pb-16 lg:pb-0 lg:rounded-[20px]"
           id="main-content"
           aria-label="Contenu principal"
         >

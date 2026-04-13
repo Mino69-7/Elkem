@@ -1,4 +1,5 @@
 import { useState, useMemo, type ElementType } from 'react';
+import { clsx } from 'clsx';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -370,7 +371,7 @@ function PhoneModal({
         >
           <motion.div
             className="w-full max-w-md flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
-            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', maxHeight: '90vh' }}
+            style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', border: '1px solid var(--glass-border)', maxHeight: '90vh' }}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -448,7 +449,7 @@ function PhoneModal({
                         {showDropdown && search.length >= 2 && (
                           <div
                             className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
-                            style={{ background: 'var(--bg-secondary)' }}
+                            style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
                           >
                             {isFetching ? (
                               <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
@@ -604,7 +605,7 @@ function WorkstationModal({
         >
           <motion.div
             className="w-full max-w-md flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
-            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-glass)', maxHeight: '90vh' }}
+            style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', border: '1px solid var(--glass-border)', maxHeight: '90vh' }}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -640,8 +641,8 @@ function WorkstationModal({
                     </div>
                     {showDropdown && search.length >= 1 && (
                       <div
-                        className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
-                        style={{ background: 'var(--bg-secondary)' }}
+                        className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--glass-border)] shadow-xl overflow-hidden"
+                        style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
                       >
                         {isFetching ? (
                           <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
@@ -1242,6 +1243,7 @@ export default function DeviceDetail() {
   const { data: device, isLoading, error } = useDevice(id!);
   const qcMain = useQueryClient();
 
+  const [activeDetailTab, setActiveDetailTab] = useState('info');
   const [formOpen,   setFormOpen]   = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [deleting,             setDeleting]             = useState(false);
@@ -1371,8 +1373,8 @@ export default function DeviceDetail() {
       </div>
 
       {/* ─── Onglets ─────────────────────────────────────────── */}
-      <Tabs.Root defaultValue="info">
-        <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] w-fit" style={{ background: 'var(--bg-secondary)' }}>
+      <Tabs.Root value={activeDetailTab} onValueChange={setActiveDetailTab}>
+        <Tabs.List className="tabs-glass">
           {[
             { value: 'info',        label: 'Informations' },
             ...(device.assignedUser ? [{ value: 'equipment', label: 'Équipements' }] : []),
@@ -1382,9 +1384,28 @@ export default function DeviceDetail() {
             <Tabs.Trigger
               key={tab.value}
               value={tab.value}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors text-[var(--text-muted)] data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
+              className={clsx(
+                'relative px-3 py-1.5 text-sm font-medium rounded-[18px] outline-none transition-colors',
+                activeDetailTab === tab.value
+                  ? 'text-primary'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              )}
             >
-              {tab.label}
+              {activeDetailTab === tab.value && (
+                <motion.div
+                  layoutId="detail-tabs-pill"
+                  className="absolute inset-0 rounded-[18px]"
+                  style={{
+                    background: 'rgba(99,102,241,0.13)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(99,102,241,0.22)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 2px 8px rgba(99,102,241,0.12)',
+                  }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                />
+              )}
+              <span className="relative z-10">{tab.label}</span>
             </Tabs.Trigger>
           ))}
         </Tabs.List>

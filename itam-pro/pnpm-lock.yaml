@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@creativoma/liquid-glass':
+        specifier: ^1.2.0
+        version: 1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     devDependencies:
       concurrently:
         specifier: ^9.0.1
@@ -802,6 +806,12 @@ packages:
   '@colors/colors@1.6.0':
     resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
     engines: {node: '>=0.1.90'}
+
+  '@creativoma/liquid-glass@1.2.0':
+    resolution: {integrity: sha512-2nLZcDXWJkI57gcOJF2AVs76NuiSTw4Dlzimpky2aPjYvvA1lN5pYmyy1Gp9DOCL4Vt5nTeGhXKn/3J4d0H1uw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   '@dabh/diagnostics@2.0.8':
     resolution: {integrity: sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q==}
@@ -5228,6 +5238,11 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@colors/colors@1.6.0': {}
+
+  '@creativoma/liquid-glass@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
 
   '@dabh/diagnostics@2.0.8':
     dependencies:

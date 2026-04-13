@@ -24,8 +24,8 @@
   --border-glass:   rgba(255, 255, 255, 0.50);
   --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.08);
   --text-primary:   #0f172a;
-  --text-secondary: #64748b;
-  --text-muted:     #94a3b8;
+  --text-secondary: #334155;   /* was #64748b — trop clair sur fond lavande */
+  --text-muted:     #64748b;   /* was #94a3b8 — illisible en light mode */
 
   /* Radius */
   --radius-sm:  8px;
@@ -46,9 +46,9 @@
   --bg-glass-hover: rgba(255, 255, 255, 0.08);
   --border-glass:   rgba(255, 255, 255, 0.08);
   --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.40);
-  --text-primary:   #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted:     #475569;
+  --text-primary:   #f8fafc;
+  --text-secondary: #cbd5e1;   /* was #94a3b8 — trop sombre en dark mode */
+  --text-muted:     #94a3b8;   /* was #475569 — quasi invisible sur fond sombre */
 }
 
 /* ─── Base styles ──────────────────────────────────────────── */
@@ -65,9 +65,9 @@ html {
 body {
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
-  background-color: var(--bg-primary);
+  background: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background 0.4s ease, color 0.3s ease;
   min-height: 100vh;
 }
 

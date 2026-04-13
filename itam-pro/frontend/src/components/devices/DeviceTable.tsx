@@ -82,10 +82,10 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete, from
   if (isLoading) {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full text-sm" aria-label="Chargement de la liste">
+        <table className="table-glass text-sm" aria-label="Chargement de la liste">
           <tbody>
             {Array.from({ length: 8 }).map((_, i) => (
-              <tr key={i} className="border-b border-[var(--border-glass)]">
+              <tr key={i}>
                 {[1, 2, 3, 4, 5, 6].map((j) => (
                   <td key={j} className="px-4 py-3">
                     <Skeleton className="h-4 w-full" />
@@ -110,9 +110,9 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete, from
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm" aria-label="Liste des appareils">
+      <table className="table-glass text-sm" aria-label="Liste des appareils">
         <thead>
-          <tr className="border-b border-[var(--border-glass)]">
+          <tr>
             <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)]">Site</th>
             <th className="px-4 py-3 text-left hidden md:table-cell">Affecté à</th>
             <th className="px-4 py-3 text-left"><SortHeader field="type"     label="Type" /></th>
@@ -132,7 +132,7 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete, from
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02 }}
                 onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/devices', fromTab } })}
-                className="border-b border-[var(--border-glass)] hover:bg-white/[0.03] transition-colors group cursor-pointer"
+                className="transition-colors group cursor-pointer"
               >
                 {/* Site */}
                 <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">

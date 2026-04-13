@@ -148,7 +148,7 @@ function ReceiveModal({ order, onClose, onSubmit, isPending, error, resetKey, la
         <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md"
-          style={{ background: 'var(--bg-secondary)' }}
+          style={{ background: 'transparent' }}
           onOpenAutoFocus={(e) => { e.preventDefault(); snRef.current?.focus(); }}
         >
           <div className="glass-card rounded-2xl p-6 space-y-4">
@@ -909,18 +909,27 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
           <p className="text-sm text-[var(--text-muted)]">Aucun modèle configuré</p>
         </GlassCard>
       ) : (
-        <GlassCard padding="none">
+        <div className="space-y-3">
           {Object.entries(modelsByType).map(([type, models]) => {
             const Icon = TYPE_ICONS[type as DeviceType] ?? HelpCircle;
             return (
-              <div key={type}>
-                <div className="px-4 py-2 bg-white/[0.02] border-b border-[var(--border-glass)] flex items-center gap-2">
-                  <Icon size={12} className="text-[var(--text-muted)]" />
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <GlassCard key={type} padding="none">
+                {/* ── En-tête de groupe ── */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border-glass)]">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'rgba(99,102,241,0.12)' }}>
+                    <Icon size={12} className="text-primary" />
+                  </div>
+                  <p className="text-xs font-semibold text-[var(--text-secondary)]">
                     {DEVICE_TYPE_LABELS[type as DeviceType]}
                   </p>
+                  <span className="ml-auto text-[10px] text-[var(--text-muted)]">
+                    {models.length} modèle{models.length > 1 ? 's' : ''}
+                  </span>
                 </div>
-                {models.map((m) => (
+
+                {/* ── Lignes draggables ── */}
+                {models.map((m, idx) => (
                   <div
                     key={m.id}
                     draggable
@@ -929,22 +938,23 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                     onDrop={(e) => handleDrop(e, m.id, type)}
                     onDragEnd={handleDragEnd}
                     className={clsx(
-                      'flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border-glass)] transition-colors select-none',
+                      'flex items-center gap-3 px-4 py-3 transition-colors select-none',
+                      idx < models.length - 1 && 'border-b border-[var(--border-glass)]/60',
                       draggingId === m.id
                         ? 'opacity-40 bg-primary/5'
                         : dragOverId === m.id
                           ? 'border-t-2 border-t-primary/60 bg-primary/[0.04]'
-                          : 'hover:bg-white/[0.02]'
+                          : 'hover:bg-white/[0.025]'
                     )}
                   >
                     {/* Poignée drag */}
                     <GripVertical
                       size={14}
-                      className="text-[var(--text-muted)] cursor-grab active:cursor-grabbing flex-shrink-0 opacity-40 hover:opacity-80 transition-opacity"
+                      className="text-[var(--text-muted)] cursor-grab active:cursor-grabbing flex-shrink-0 opacity-30 hover:opacity-70 transition-opacity"
                     />
                     <div className="flex-1 min-w-0">
                       <p className={clsx('text-sm font-medium', m.isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)] line-through')}>{m.name}</p>
-                      <p className="text-[10px] text-[var(--text-muted)] truncate">
+                      <p className="text-[10px] text-[var(--text-muted)] truncate mt-0.5">
                         <span className="text-[var(--text-secondary)]">{m.brand}</span>
                         {[m.processor, m.ram, m.storage, m.screenSize].filter(Boolean).length > 0 && (
                           <span> · {[m.processor, m.ram, m.storage, m.screenSize].filter(Boolean).join(' · ')}</span>
@@ -993,10 +1003,10 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
                     </div>
                   </div>
                 ))}
-              </div>
+              </GlassCard>
             );
           })}
-        </GlassCard>
+        </div>
       )}
     </div>
   );
@@ -1149,7 +1159,7 @@ function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fro
       {/* Panel latéral */}
       <motion.div
         className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg flex flex-col overflow-hidden"
-        style={{ background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border-glass)' }}
+        style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', borderLeft: '1px solid var(--glass-border)' }}
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
@@ -1425,23 +1435,36 @@ export default function Orders() {
       </div>
 
       <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
-        <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] bg-white/[0.02] w-fit mb-6">
+        <Tabs.List className="tabs-glass mb-6">
           {[
             { value: 'orders',    label: 'Commandes' },
             { value: 'catalogue', label: 'Catalogue modèles' },
-            { value: 'alerts',    label: 'Règles d\'alerte' },
+            { value: 'alerts',    label: "Règles d'alerte" },
             { value: 'history',   label: 'Historique' },
           ].map((tab) => (
             <Tabs.Trigger
               key={tab.value}
               value={tab.value}
               className={clsx(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 outline-none',
-                'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                'data-[state=active]:bg-primary/15 data-[state=active]:text-primary'
+                'relative px-4 py-2 rounded-[18px] text-sm font-medium outline-none transition-colors',
+                activeTab === tab.value ? 'text-primary' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               )}
             >
-              {tab.label}
+              {activeTab === tab.value && (
+                <motion.div
+                  layoutId="orders-tabs-pill"
+                  className="absolute inset-0 rounded-[18px]"
+                  style={{
+                    background: 'rgba(99,102,241,0.13)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(99,102,241,0.22)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 2px 8px rgba(99,102,241,0.12)',
+                  }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                />
+              )}
+              <span className="relative z-10">{tab.label}</span>
             </Tabs.Trigger>
           ))}
         </Tabs.List>

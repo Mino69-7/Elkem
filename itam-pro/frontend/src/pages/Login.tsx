@@ -44,23 +44,27 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen animated-gradient flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Orbes décoratifs animés */}
+    /* Le fond est rendu par body::before (liquid-glass.css) — fond riche en orbes */
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Orbes décoratifs supplémentaires animés (s'ajoutent à body::before) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <motion.div
-          className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl"
-          animate={{ scale: [1, 1.2, 1], x: [0, 30, 0] }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.22) 0%, transparent 70%)', filter: 'blur(60px)' }}
+          animate={{ scale: [1, 1.15, 1], x: [0, 40, 0] }}
+          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
         />
         <motion.div
-          className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-cyan-500/15 rounded-full blur-3xl"
-          animate={{ scale: [1, 1.3, 1], y: [0, -20, 0] }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+          className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(6,182,212,0.20) 0%, transparent 70%)', filter: 'blur(60px)' }}
+          animate={{ scale: [1, 1.2, 1], y: [0, -30, 0] }}
+          transition={{ duration: 11, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
         />
         <motion.div
-          className="absolute top-1/2 right-1/3 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl"
-          animate={{ scale: [1, 1.1, 1], x: [0, -20, 0] }}
-          transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
+          className="absolute top-1/2 right-1/3 w-[320px] h-[320px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%)', filter: 'blur(60px)' }}
+          animate={{ scale: [1, 1.1, 1], x: [0, -25, 0] }}
+          transition={{ duration: 13, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
         />
       </div>
 

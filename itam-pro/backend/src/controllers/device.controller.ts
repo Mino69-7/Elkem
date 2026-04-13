@@ -63,13 +63,17 @@ export async function listDevices(req: Request, res: Response, next: NextFunctio
     const where: Record<string, unknown> = {};
 
     if (search) {
+      // "Commence par" : serialNumber/imei/assetTag/brand/model matchent uniquement si le champ
+      // commence par le terme saisi. Pour displayName on ajoute aussi un match "mot qui commence
+      // par" (ex: " Dupont" pour trouver "Jean Dupont" quand on tape "Dup").
       where.OR = [
-        { assetTag:    { contains: search, mode: 'insensitive' } },
-        { serialNumber:{ contains: search, mode: 'insensitive' } },
-        { imei:        { contains: search, mode: 'insensitive' } },
-        { brand:       { contains: search, mode: 'insensitive' } },
-        { model:       { contains: search, mode: 'insensitive' } },
-        { assignedUser:{ displayName: { contains: search, mode: 'insensitive' } } },
+        { assetTag:    { startsWith: search, mode: 'insensitive' } },
+        { serialNumber:{ startsWith: search, mode: 'insensitive' } },
+        { imei:        { startsWith: search, mode: 'insensitive' } },
+        { brand:       { startsWith: search, mode: 'insensitive' } },
+        { model:       { startsWith: search, mode: 'insensitive' } },
+        { assignedUser:{ displayName: { startsWith: search, mode: 'insensitive' } } },
+        { assignedUser:{ displayName: { contains: ` ${search}`, mode: 'insensitive' } } },
       ];
     }
     if (type)             where.type   = type;

@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
+  },
+  "dependencies": {
+    "@creativoma/liquid-glass": "^1.2.0"
   }
 }

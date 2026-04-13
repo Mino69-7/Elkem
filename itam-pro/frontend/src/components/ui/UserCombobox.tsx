@@ -175,7 +175,7 @@ export function UserCombobox({ value, displayValue, onChange, error, placeholder
               ? 'mt-1 rounded-xl border border-[var(--border-glass)] overflow-hidden'
               : 'absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] overflow-hidden shadow-xl'
           }
-          style={{ background: 'var(--bg-secondary)' }}
+          style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
         >
           {results.map((user) => (
             <button
@@ -209,7 +209,7 @@ export function UserCombobox({ value, displayValue, onChange, error, placeholder
               ? 'mt-1 rounded-xl border border-[var(--border-glass)] px-3 py-3 text-sm text-[var(--text-muted)]'
               : 'absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] px-3 py-3 text-sm text-[var(--text-muted)] shadow-xl'
           }
-          style={{ background: 'var(--bg-secondary)' }}
+          style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
         >
           Aucun utilisateur trouvé pour « {debouncedQuery} »
         </div>

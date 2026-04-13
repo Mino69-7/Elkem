@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { LayoutDashboard, BookUser, Package, ShieldCheck, BarChart3 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -12,12 +13,11 @@ const MOBILE_NAV_ITEMS = [
 
 export default function MobileNav() {
   return (
+    /* Flottante : ne touche pas les bords, arrondie */
     <nav
-      className="lg:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-[var(--border-glass)]"
+      className="navbar-glass lg:hidden fixed bottom-3 left-3 right-3 z-30 rounded-[22px]"
       style={{
-        background: 'var(--bg-secondary)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)',
       }}
       aria-label="Navigation mobile"
     >
@@ -29,21 +29,29 @@ export default function MobileNav() {
               key={item.to}
               to={item.to}
               className={({ isActive }) => clsx(
-                'relative flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-200',
+                'relative flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-colors duration-150',
                 isActive ? 'text-primary' : 'text-[var(--text-muted)]'
               )}
               aria-label={item.label}
             >
               {({ isActive }) => (
                 <>
-                  <Icon size={20} />
-                  <span className="text-[10px] font-medium">{item.label}</span>
                   {isActive && (
-                    <span
-                      className="absolute bottom-1 w-1 h-1 rounded-full bg-primary"
-                      aria-hidden="true"
+                    <motion.div
+                      className="absolute inset-0 rounded-xl"
+                      layoutId="mobile-nav-pill"
+                      style={{
+                        background: 'rgba(99, 102, 241, 0.13)',
+                        backdropFilter: 'blur(12px)',
+                        WebkitBackdropFilter: 'blur(12px)',
+                        border: '1px solid rgba(99, 102, 241, 0.22)',
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.40)',
+                      }}
+                      transition={{ type: 'spring', stiffness: 480, damping: 36 }}
                     />
                   )}
+                  <Icon size={20} className="relative z-10" />
+                  <span className="text-[10px] font-medium relative z-10">{item.label}</span>
                 </>
               )}
             </NavLink>

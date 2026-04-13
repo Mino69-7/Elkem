@@ -33,7 +33,7 @@ export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(({
   ...props
 }, ref) => {
   const baseClasses = clsx(
-    'glass-card',
+    'glass-card glass glass-reveal',
     paddingClasses[padding],
     hoverable && 'cursor-pointer',
     className

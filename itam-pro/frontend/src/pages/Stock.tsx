@@ -3,10 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
-  Plus, Package, ShoppingCart, AlertTriangle, CheckCircle,
+  Package, ShoppingCart, AlertTriangle, CheckCircle,
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Cpu, MemoryStick, HardDrive,
   Trash2, LayoutGrid, List, ArrowLeft, Tv, Server, Wrench, RotateCcw,
+  Tag, Flag,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -14,7 +15,7 @@ import api from '../services/api';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { AppSelect } from '../components/ui/AppSelect';
+import { FilterPill } from '../components/devices/DeviceFilters';
 import { DEVICE_TYPE_LABELS, formatDate } from '../utils/formatters';
 import type { DeviceType, Device } from '../types';
 
@@ -499,9 +500,9 @@ function TabInventaire() {
 
 function TabDechets() {
   const navigate = useNavigate();
-  const [typeFilter,   setTypeFilter]   = useState('ALL');
-  const [modelFilter,  setModelFilter]  = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [typeFilter,   setTypeFilter]   = useState<string | undefined>(undefined);
+  const [modelFilter,  setModelFilter]  = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
 
   const { data: retiredDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['retired-devices'],
@@ -526,35 +527,28 @@ function TabDechets() {
 
   // Options Type (types présents, ordre TYPE_ORDER)
   const presentTypes = TYPE_ORDER.filter((t) => allDevices.some((d) => d.type === t));
-  const typeOptions = [
-    { value: 'ALL', label: 'Tous les types' },
-    ...presentTypes.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] ?? t })),
-  ];
+  const typeOptions = presentTypes.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] ?? t }));
 
   // Filtrage progressif
-  const afterType = typeFilter === 'ALL' ? allDevices : allDevices.filter((d) => d.type === typeFilter);
+  const afterType = !typeFilter ? allDevices : allDevices.filter((d) => d.type === typeFilter);
 
   // Options Modèle (parmi les devices après filtre type)
   const presentModelKeys = [...new Set(afterType.map((d) => `${d.brand}|${d.model}`))];
-  const modelOptions = [
-    { value: 'ALL', label: 'Tous les modèles' },
-    ...presentModelKeys.map((k) => {
-      const [brand, model] = k.split('|');
-      return { value: k, label: `${brand} ${model}` };
-    }),
-  ];
+  const modelOptions = presentModelKeys.map((k) => {
+    const [brand, model] = k.split('|');
+    return { value: k, label: `${brand} ${model}` };
+  });
 
-  const afterModel = modelFilter === 'ALL' ? afterType : afterType.filter((d) => `${d.brand}|${d.model}` === modelFilter);
+  const afterModel = !modelFilter ? afterType : afterType.filter((d) => `${d.brand}|${d.model}` === modelFilter);
 
   const statusOptions = [
-    { value: 'ALL',     label: 'Tous les statuts' },
     { value: 'RETIRED', label: 'Déchet' },
     { value: 'LOST',    label: 'Perdu' },
     { value: 'STOLEN',  label: 'Volé' },
   ];
 
-  const devices = statusFilter === 'ALL' ? afterModel : afterModel.filter((d) => d.status === statusFilter);
-  const isFiltered = typeFilter !== 'ALL' || modelFilter !== 'ALL' || statusFilter !== 'ALL';
+  const devices = !statusFilter ? afterModel : afterModel.filter((d) => d.status === statusFilter);
+  const isFiltered = !!(typeFilter || modelFilter || statusFilter);
 
   const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
     RETIRED: { label: 'Déchet', cls: 'bg-zinc-500/20 text-zinc-400' },
@@ -562,7 +556,7 @@ function TabDechets() {
     STOLEN:  { label: 'Volé',   cls: 'bg-purple-500/15 text-purple-400' },
   };
 
-  const handleTypeChange = (v: string) => { setTypeFilter(v); setModelFilter('ALL'); };
+  const handleTypeChange = (v: string | undefined) => { setTypeFilter(v); setModelFilter(undefined); };
 
   return (
     <div className="space-y-4">
@@ -575,31 +569,33 @@ function TabDechets() {
 
       {/* ─── Filtres ─────────────────────────────────────────── */}
       {!isLoading && allDevices.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <AppSelect
+        <div className="flex items-center gap-2 flex-wrap">
+          <FilterPill
+            icon={<Layers size={11} />}
+            label="Type"
             value={typeFilter}
-            onChange={handleTypeChange}
             options={typeOptions}
-            placeholder="Type"
-            className="!py-1.5 !text-xs w-44"
+            onChange={handleTypeChange}
+            disabled={typeOptions.length === 0}
           />
-          <AppSelect
+          <FilterPill
+            icon={<Tag size={11} />}
+            label="Modèle"
             value={modelFilter}
-            onChange={setModelFilter}
             options={modelOptions}
-            placeholder="Modèle"
-            className="!py-1.5 !text-xs w-52"
+            onChange={setModelFilter}
+            disabled={modelOptions.length === 0}
           />
-          <AppSelect
+          <FilterPill
+            icon={<Flag size={11} />}
+            label="Statut"
             value={statusFilter}
-            onChange={setStatusFilter}
             options={statusOptions}
-            placeholder="Statut"
-            className="!py-1.5 !text-xs w-44"
+            onChange={setStatusFilter}
           />
           {isFiltered && (
             <button
-              onClick={() => { setTypeFilter('ALL'); setModelFilter('ALL'); setStatusFilter('ALL'); }}
+              onClick={() => { setTypeFilter(undefined); setModelFilter(undefined); setStatusFilter(undefined); }}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs text-red-400/80 hover:text-red-400 hover:bg-red-500/8 border border-transparent hover:border-red-500/20 transition-all"
               aria-label="Réinitialiser les filtres"
             >
@@ -709,8 +705,8 @@ function TabDechets() {
 
 function TabMaintenance() {
   const navigate = useNavigate();
-  const [typeFilter,  setTypeFilter]  = useState('ALL');
-  const [modelFilter, setModelFilter] = useState('ALL');
+  const [typeFilter,  setTypeFilter]  = useState<string | undefined>(undefined);
+  const [modelFilter, setModelFilter] = useState<string | undefined>(undefined);
 
   const { data: maintDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['maintenance-devices'],
@@ -726,27 +722,21 @@ function TabMaintenance() {
 
   // Options Type
   const presentTypes = TYPE_ORDER.filter((t) => allDevices.some((d) => d.type === t));
-  const typeOptions = [
-    { value: 'ALL', label: 'Tous les types' },
-    ...presentTypes.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] ?? t })),
-  ];
+  const typeOptions = presentTypes.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] ?? t }));
 
-  const afterType = typeFilter === 'ALL' ? allDevices : allDevices.filter((d) => d.type === typeFilter);
+  const afterType = !typeFilter ? allDevices : allDevices.filter((d) => d.type === typeFilter);
 
   // Options Modèle (parmi devices après filtre type)
   const presentModelKeys = [...new Set(afterType.map((d) => `${d.brand}|${d.model}`))];
-  const modelOptions = [
-    { value: 'ALL', label: 'Tous les modèles' },
-    ...presentModelKeys.map((k) => {
-      const [brand, model] = k.split('|');
-      return { value: k, label: `${brand} ${model}` };
-    }),
-  ];
+  const modelOptions = presentModelKeys.map((k) => {
+    const [brand, model] = k.split('|');
+    return { value: k, label: `${brand} ${model}` };
+  });
 
-  const devices = modelFilter === 'ALL' ? afterType : afterType.filter((d) => `${d.brand}|${d.model}` === modelFilter);
-  const isFiltered = typeFilter !== 'ALL' || modelFilter !== 'ALL';
+  const devices = !modelFilter ? afterType : afterType.filter((d) => `${d.brand}|${d.model}` === modelFilter);
+  const isFiltered = !!(typeFilter || modelFilter);
 
-  const handleTypeChange = (v: string) => { setTypeFilter(v); setModelFilter('ALL'); };
+  const handleTypeChange = (v: string | undefined) => { setTypeFilter(v); setModelFilter(undefined); };
 
   return (
     <div className="space-y-4">
@@ -759,24 +749,26 @@ function TabMaintenance() {
 
       {/* ─── Filtres ─────────────────────────────────────────── */}
       {!isLoading && allDevices.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <AppSelect
+        <div className="flex items-center gap-2 flex-wrap">
+          <FilterPill
+            icon={<Layers size={11} />}
+            label="Type"
             value={typeFilter}
-            onChange={handleTypeChange}
             options={typeOptions}
-            placeholder="Type"
-            className="!py-1.5 !text-xs w-44"
+            onChange={handleTypeChange}
+            disabled={typeOptions.length === 0}
           />
-          <AppSelect
+          <FilterPill
+            icon={<Tag size={11} />}
+            label="Modèle"
             value={modelFilter}
-            onChange={setModelFilter}
             options={modelOptions}
-            placeholder="Modèle"
-            className="!py-1.5 !text-xs w-52"
+            onChange={setModelFilter}
+            disabled={modelOptions.length === 0}
           />
           {isFiltered && (
             <button
-              onClick={() => { setTypeFilter('ALL'); setModelFilter('ALL'); }}
+              onClick={() => { setTypeFilter(undefined); setModelFilter(undefined); }}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs text-red-400/80 hover:text-red-400 hover:bg-red-500/8 border border-transparent hover:border-red-500/20 transition-all"
               aria-label="Réinitialiser les filtres"
             >
@@ -885,25 +877,14 @@ export default function Stock() {
   return (
     <div className="p-4 lg:p-6 space-y-6">
       {/* ─── En-tête ─────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-[var(--text-primary)]">Stock & Inventaire</h1>
-          <p className="text-sm text-[var(--text-muted)] mt-0.5">Disponibilités par modèle — appareils non assignés</p>
-        </div>
-        <div className="sm:ml-auto">
-          <button
-            onClick={() => navigate('/orders')}
-            className="btn-primary flex items-center gap-2 px-4 py-2 text-sm"
-          >
-            <Plus size={16} />
-            Nouvelle commande
-          </button>
-        </div>
+      <div>
+        <h1 className="text-xl font-bold text-[var(--text-primary)]">Stock & Inventaire</h1>
+        <p className="text-sm text-[var(--text-muted)] mt-0.5">Disponibilités par modèle — appareils non assignés</p>
       </div>
 
       {/* ─── Onglets ─────────────────────────────────────────── */}
       <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
-        <Tabs.List className="flex gap-1 p-1 rounded-xl border border-[var(--border-glass)] bg-white/[0.02] w-fit mb-6">
+        <Tabs.List className="tabs-glass mb-6">
           {[
             { value: 'inventaire',  label: 'Inventaire' },
             { value: 'maintenance', label: 'Maintenance' },
@@ -913,12 +894,25 @@ export default function Stock() {
               key={tab.value}
               value={tab.value}
               className={clsx(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 outline-none',
-                'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                'data-[state=active]:bg-primary/15 data-[state=active]:text-primary'
+                'relative px-4 py-2 rounded-[18px] text-sm font-medium outline-none transition-colors',
+                activeTab === tab.value ? 'text-primary' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               )}
             >
-              {tab.label}
+              {activeTab === tab.value && (
+                <motion.div
+                  layoutId="stock-tabs-pill"
+                  className="absolute inset-0 rounded-[18px]"
+                  style={{
+                    background: 'rgba(99,102,241,0.13)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(99,102,241,0.22)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 2px 8px rgba(99,102,241,0.12)',
+                  }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                />
+              )}
+              <span className="relative z-10">{tab.label}</span>
             </Tabs.Trigger>
           ))}
         </Tabs.List>

@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import { GlassCard } from '../components/ui/GlassCard';
@@ -22,10 +23,30 @@ export default function Settings() {
             <p className="text-sm text-[var(--text-secondary)]">Thème</p>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">Mode sombre ou clair</p>
           </div>
-          <div className="flex rounded-xl border border-[var(--border-glass)] overflow-hidden">
+          <div className="toggle-glass">
             {(['dark', 'light'] as const).map((t) => (
-              <button key={t} onClick={() => setTheme(t)} className={`px-4 py-2 text-xs font-medium transition-colors ${theme === t ? 'bg-primary/20 text-primary' : 'text-[var(--text-muted)] hover:bg-white/5'}`}>
-                {t === 'dark' ? '🌙 Sombre' : '☀️ Clair'}
+              <button
+                key={t}
+                onClick={() => setTheme(t)}
+                className={`relative px-4 py-2 text-xs font-medium transition-colors duration-150 ${
+                  theme === t ? 'text-primary' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {theme === t && (
+                  <motion.div
+                    className="absolute inset-0 rounded-[12px]"
+                    layoutId="settings-theme-pill"
+                    style={{
+                      background: 'rgba(99,102,241,0.13)',
+                      backdropFilter: 'blur(12px)',
+                      WebkitBackdropFilter: 'blur(12px)',
+                      border: '1px solid rgba(99,102,241,0.22)',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
+                    }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                  />
+                )}
+                <span className="relative z-10">{t === 'dark' ? '🌙 Sombre' : '☀️ Clair'}</span>
               </button>
             ))}
           </div>

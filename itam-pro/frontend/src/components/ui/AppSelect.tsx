@@ -61,7 +61,9 @@ export function AppSelect({
             'animate-in fade-in-0 zoom-in-95'
           )}
           style={{
-            background: 'var(--bg-secondary)',
+            background: 'var(--surface-primary)',
+            backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))',
             maxHeight: '280px',
           }}
         >
