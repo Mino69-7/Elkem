@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -403,18 +404,28 @@ export default function DeviceForm({
   const formContent = (
     <>
       {/* En-tête */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
-        <h2 className="font-semibold text-[var(--text-primary)]">{title}</h2>
+      <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 relative z-10" style={{ borderBottom: '1px solid rgba(139,120,255,0.20)' }}>
+        <div className="min-w-0 flex-1 pr-3">
+          <h2 className="font-bold text-[15px] truncate" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+          {isEdit && device && (
+            <p className="text-[11px] mt-0.5 font-mono" style={{ color: 'var(--text-secondary)', opacity: 0.80 }}>
+              {device.serialNumber}
+            </p>
+          )}
+        </div>
         <button
           onClick={onClose}
-          className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors"
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-150"
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
         >
-          <X size={16} />
+          <X size={15} style={{ color: 'var(--text-muted)' }} />
         </button>
       </div>
 
       {/* Formulaire scrollable */}
-      <form onSubmit={handleSubmit(handleFormSubmit)} className="flex-1 overflow-y-auto">
+      <form onSubmit={handleSubmit(handleFormSubmit)} className="flex-1 overflow-y-auto relative z-10">
         <div className="p-5 space-y-5">
 
           {/* ── 1. Utilisateur (caché si hideUserField) ── */}
@@ -749,68 +760,104 @@ export default function DeviceForm({
         </div>
 
         {/* Pied */}
-        <div className="flex gap-3 px-5 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">
+        <div className="flex gap-3 px-5 py-4 flex-shrink-0 relative z-10" style={{ borderTop: '1px solid rgba(139,120,255,0.20)' }}>
+          <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">
             Annuler
           </button>
-          <button type="submit" disabled={isSaving} className="btn-primary flex-1 py-2 text-sm flex items-center justify-center gap-2">
+          <motion.button
+            type="submit"
+            disabled={isSaving}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="flex-1 py-2.5 text-[13px] rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              border: '1px solid rgba(99,102,241,0.45)',
+              color: '#ffffff',
+              boxShadow: '0 4px 20px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.20)',
+            }}
+          >
             {isSaving && <Loader2 size={14} className="animate-spin" />}
             {isEdit ? 'Enregistrer' : 'Créer'}
-          </button>
+          </motion.button>
         </div>
       </form>
     </>
   );
 
-  // ── Rendu : modal centrée OU drawer latéral ────────────────
-  return (
+  // ── Rendu via portal (échappe le transform context d'AppShell) ─
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Overlay commun */}
+          {/* Backdrop léger — laisse les couleurs de la page traverser le blur du panel */}
           <motion.div
-            className="fixed inset-0 z-50 bg-black/60"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            key="form-backdrop"
+            style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,10,0.42)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', cursor: 'pointer' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.20 }}
             onClick={onClose}
           />
 
           {modal ? (
-            /* ── Modal centrée ── */
+            /* ── Modal centrée (ex: depuis l'onglet Équipements) ── */
             <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              key="form-modal"
+              style={{ position: 'fixed', inset: 0, zIndex: 201, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'none' }}
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: 'spring', stiffness: 460, damping: 36, mass: 0.72 }}
             >
-              <motion.div
-                className="w-full max-w-lg flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
-                style={{
-                  background: 'var(--surface-primary)',
-                  backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))',
-                  WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))',
-                  border: '1px solid var(--glass-border)',
-                  maxHeight: '90vh',
-                }}
-                initial={{ opacity: 0, scale: 0.96, y: 12 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 12 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 38 }}
+              <div
+                className="modal-glass w-full max-w-lg flex flex-col pointer-events-auto"
+                style={{ maxHeight: '90vh' }}
                 onClick={(e) => e.stopPropagation()}
               >
+                {/* Décorations specular */}
+                <div className="absolute inset-x-0 top-0 h-[2px] pointer-events-none" style={{ borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', background: 'linear-gradient(90deg, transparent 5%, rgba(180,160,255,0.80) 35%, rgba(99,200,255,0.60) 65%, transparent 95%)' }} />
+                <div className="absolute top-0 left-0 pointer-events-none" style={{ width: '2px', height: '60%', background: 'linear-gradient(180deg, rgba(255,255,255,0.30) 0%, transparent 100%)' }} />
+                <div className="absolute pointer-events-none" style={{ top: '-40px', right: '-32px', width: '160px', height: '160px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.28) 0%, rgba(6,182,212,0.10) 45%, transparent 70%)', filter: 'blur(8px)' }} />
                 {formContent}
-              </motion.div>
+              </div>
             </motion.div>
           ) : (
-            /* ── Drawer latéral (défaut) ── */
+            /* ── Drawer flottant arrondi (défaut) ── */
             <motion.div
-              className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg flex flex-col shadow-2xl"
-              style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', borderLeft: '1px solid var(--glass-border)' }}
-              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 400, damping: 40 }}
+              key="form-drawer"
+              className="modal-glass flex flex-col pointer-events-auto"
+              style={{
+                position: 'fixed',
+                right: '16px',
+                top: '16px',
+                bottom: '16px',
+                width: '440px',
+                maxWidth: 'calc(100vw - 32px)',
+                zIndex: 201,
+              }}
+              initial={{ x: 'calc(100% + 24px)', opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 'calc(100% + 24px)', opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 40, mass: 0.85 }}
+              onClick={(e) => e.stopPropagation()}
             >
+              {/* ── Décorations liquid glass ── */}
+              {/* Ligne specular supérieure */}
+              <div className="absolute inset-x-0 top-0 h-[2px] pointer-events-none flex-shrink-0" style={{ borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', background: 'linear-gradient(90deg, transparent 5%, rgba(180,160,255,0.80) 30%, rgba(99,200,255,0.65) 70%, transparent 95%)' }} />
+              {/* Reflet vertical gauche */}
+              <div className="absolute top-0 left-0 pointer-events-none" style={{ width: '2px', height: '45%', background: 'linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)' }} />
+              {/* Orbe indigo haut-droite */}
+              <div className="absolute pointer-events-none" style={{ top: '-50px', right: '-40px', width: '200px', height: '200px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.25) 0%, rgba(6,182,212,0.08) 45%, transparent 68%)', filter: 'blur(10px)' }} />
+              {/* Orbe subtil bas-gauche */}
+              <div className="absolute pointer-events-none" style={{ bottom: '-30px', left: '-30px', width: '140px', height: '140px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)', filter: 'blur(8px)' }} />
               {formContent}
             </motion.div>
           )}
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

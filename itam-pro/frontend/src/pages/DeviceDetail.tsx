@@ -1,4 +1,5 @@
 import { useState, useMemo, type ElementType } from 'react';
+import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -7,7 +8,7 @@ import {
   ArrowLeft, Pencil, Trash2, UserRound, UserPlus, UserMinus,
   Loader2, AlertTriangle, CheckCircle, XCircle, Clock,
   Laptop, Monitor, Cpu, Tv, Layers, Headphones, Keyboard, Smartphone, Tablet, Server,
-  Plus, X, Shield, ShieldOff,
+  Plus, X,
 } from 'lucide-react';
 import { useDevice, useUpdateDevice, useDeleteDevice, useAssignDevice } from '../hooks/useDevices';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -71,7 +72,54 @@ const WORKSTATION_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LA
 // Types téléphoniques (modal spécifique avec recherche pool)
 const PHONE_CAT_TYPES: DeviceType[] = ['SMARTPHONE', 'TABLET'];
 
-// ─── Formulaire ajout rapide ──────────────────────────────────
+// ─── Toggle switch iPhone style ───────────────────────────────
+
+function ToggleSwitch({
+  on, onClick, loading = false, disabled = false,
+}: {
+  on: boolean;
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      aria-pressed={on}
+      className="relative inline-flex items-center w-[44px] h-[26px] rounded-full flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:ring-offset-1 disabled:opacity-60 disabled:cursor-not-allowed"
+      style={{
+        background: on
+          ? 'linear-gradient(135deg, rgba(16,185,129,0.90), rgba(5,150,105,0.80))'
+          : 'rgba(255,255,255,0.08)',
+        border: on ? '1px solid rgba(16,185,129,0.45)' : '1px solid rgba(255,255,255,0.12)',
+        boxShadow: on
+          ? '0 2px 10px rgba(16,185,129,0.28), inset 0 1px 0 rgba(255,255,255,0.15)'
+          : 'inset 0 1px 3px rgba(0,0,0,0.20)',
+        transition: 'background 0.25s, border-color 0.25s, box-shadow 0.25s',
+      }}
+    >
+      {loading ? (
+        <Loader2 size={12} className="mx-auto animate-spin text-white/70" />
+      ) : (
+        <motion.div
+          className="absolute w-[20px] h-[20px] rounded-full"
+          style={{
+            background: on ? 'white' : 'rgba(255,255,255,0.58)',
+            boxShadow: on
+              ? '0 2px 6px rgba(0,0,0,0.26), 0 1px 2px rgba(0,0,0,0.16)'
+              : '0 1px 3px rgba(0,0,0,0.18)',
+          }}
+          animate={{ x: on ? 21 : 3 }}
+          transition={{ type: 'spring', stiffness: 560, damping: 32, mass: 0.55 }}
+        />
+      )}
+    </button>
+  );
+}
+
+// ─── (QuickAddForm supprimé — ajout via toggle uniquement) ──────
 
 function QuickAddForm({
   type, assignedUserId, allModels, onSuccess, onCancel,
@@ -743,20 +791,22 @@ function WorkstationModal({
 // ─── Types workstation (ouvre la modal pleine) ───────────────
 const WORKSTATION_CAT_TYPES: DeviceType[] = ['LAPTOP', 'DESKTOP', 'THIN_CLIENT', 'LAB_WORKSTATION'];
 
-function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdit: boolean; isManager?: boolean }) {
+function TabEquipements({ userId, canEdit }: { userId: string; canEdit: boolean; isManager?: boolean }) {
   const qc = useQueryClient();
-  const [addingType,    setAddingType]    = useState<DeviceType | null>(null);
-  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
-  const [removeConfirm,       setRemoveConfirm]       = useState<{ device: Device } | null>(null);
-  const [removeStatus,        setRemoveStatus]        = useState('IN_STOCK');
-  const [removeDeadline,      setRemoveDeadline]      = useState('');
 
-  // Modal édition poste de travail (DeviceForm)
-  const [wsModal, setWsModal] = useState<{ device: Device; type: DeviceType } | null>(null);
-  // Modal affectation poste de travail depuis pool (WorkstationModal)
-  const [wsAssignModal, setWsAssignModal] = useState<{ type: DeviceType } | null>(null);
-  // Modal pour smartphone / tablette (assign depuis pool)
-  const [phoneModal, setPhoneModal] = useState<{ device: Device | null; type: DeviceType } | null>(null);
+  // ── Confirmation retrait (workstations / téléphones uniquement) ──
+  const [removeConfirm, setRemoveConfirm] = useState<{ device: Device } | null>(null);
+  const [removeStatus,  setRemoveStatus]  = useState('IN_STOCK');
+  const [removeDeadline, setRemoveDeadline] = useState('');
+
+  // ── Toggle simple (DOCKING_STATION / HEADSET / KEYBOARD) ──
+  const [togglePending, setTogglePending] = useState<DeviceType | null>(null);
+
+  // ── Monitor config ──
+  const [monitorOpen,    setMonitorOpen]    = useState(false);
+  const [monitorQty,     setMonitorQty]     = useState<1 | 2>(1);
+  const [monitorScreens, setMonitorScreens] = useState<{ hasDocking: boolean }[]>([{ hasDocking: false }]);
+  const [monitorPending, setMonitorPending] = useState(false);
 
   const { data: userDevices = [], isLoading } = useQuery<Device[]>({
     queryKey: ['user-devices', userId],
@@ -768,12 +818,6 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
     refetchOnMount: true,
   });
 
-  const { data: allModels = [] } = useQuery<DeviceModel[]>({
-    queryKey: ['device-models'],
-    queryFn: () => api.get('/devicemodels').then((r) => r.data),
-    staleTime: 60_000,
-  });
-
   const devicesByType = useMemo(() => {
     const map: Partial<Record<DeviceType, Device[]>> = {};
     for (const d of userDevices) {
@@ -783,63 +827,108 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
     return map;
   }, [userDevices]);
 
-  // Retirer un équipement : DELETE soft-retire pour tous les devices (fake → RETIRED, réels → statut choisi)
+  // ── Invalidation groupée ──────────────────────────────────────
+  const invalidateAll = (extraDeviceId?: string) => {
+    qc.invalidateQueries({ queryKey: ['user-devices', userId] });
+    qc.invalidateQueries({ queryKey: ['devices'] });
+    qc.invalidateQueries({ queryKey: ['stock-summary'] });
+    qc.invalidateQueries({ queryKey: ['stock-devices'] });
+    qc.invalidateQueries({ queryKey: ['stockalerts'] });
+    qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
+    qc.invalidateQueries({ queryKey: ['retired-devices'] });
+    if (extraDeviceId) qc.invalidateQueries({ queryKey: ['device', extraDeviceId] });
+  };
+
+  // ── Retrait workstation / téléphone (popup statut) ─────────
   const removeMut = useMutation({
     mutationFn: ({ device: d, status, maintenanceDeadline }: { device: Device; status: string; maintenanceDeadline?: string }) =>
       api.delete(`/devices/${d.id}`, { data: { status, ...(maintenanceDeadline ? { maintenanceDeadline } : {}) } }),
     onSuccess: (_, { device: d }) => {
-      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
-      qc.invalidateQueries({ queryKey: ['devices'] });
-      qc.invalidateQueries({ queryKey: ['device', d.id] });
-      qc.invalidateQueries({ queryKey: ['stock-summary'] });
-      qc.invalidateQueries({ queryKey: ['stock-devices'] });
-      qc.invalidateQueries({ queryKey: ['stockalerts'] });
-      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
-      qc.invalidateQueries({ queryKey: ['retired-devices'] });
+      invalidateAll(d.id);
       setRemoveConfirm(null);
       setRemoveStatus('IN_STOCK');
     },
     onError: () => setRemoveConfirm(null),
   });
 
-  // Toggle docking intégrée sur un écran
-  const toggleDockingMut = useMutation({
-    mutationFn: ({ id, hasDocking }: { id: string; hasDocking: boolean }) =>
-      api.put(`/devices/${id}`, { hasDocking }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['user-devices', userId] }),
-  });
+  // ── Toggle simple (DOCKING_STATION / HEADSET / KEYBOARD) ─────
+  const handleToggleSimple = async (type: DeviceType, hasItem: boolean, devices: Device[]) => {
+    if (togglePending) return;
+    setTogglePending(type);
+    try {
+      if (hasItem) {
+        for (const d of devices) {
+          await api.delete(`/devices/${d.id}`, { data: { status: 'RETIRED' } });
+        }
+      } else {
+        await api.post('/devices', {
+          serialNumber:   `PERIPH-${Date.now()}`,
+          type,
+          brand:          '—',
+          model:          DEVICE_TYPE_LABELS[type] ?? type,
+          status:         'ASSIGNED',
+          assignedUserId: userId,
+          condition:      'GOOD',
+        });
+      }
+      invalidateAll();
+    } finally {
+      setTogglePending(null);
+    }
+  };
 
-  // Mise à jour d'un équipement depuis l'onglet (périphériques)
-  const updateEquipMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: object }) => api.put(`/devices/${id}`, data),
-    onSuccess: (_data, { id: deviceId }) => {
-      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
-      qc.invalidateQueries({ queryKey: ['devices'] });
-      qc.invalidateQueries({ queryKey: ['device', deviceId] });
-      qc.invalidateQueries({ queryKey: ['stock-summary'] });
-      qc.invalidateQueries({ queryKey: ['stock-devices'] });
-      qc.invalidateQueries({ queryKey: ['stockalerts'] });
-      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
-      qc.invalidateQueries({ queryKey: ['retired-devices'] });
-      setEditingDevice(null);
-    },
-  });
+  // ── Retrait de tous les écrans (toggle OFF) ───────────────────
+  const handleRemoveAllMonitors = async () => {
+    const monitors = devicesByType['MONITOR'] ?? [];
+    if (!monitors.length) return;
+    setMonitorPending(true);
+    try {
+      for (const d of monitors) {
+        await api.delete(`/devices/${d.id}`, { data: { status: 'RETIRED' } });
+      }
+      invalidateAll();
+    } finally {
+      setMonitorPending(false);
+    }
+  };
 
-  // Mise à jour d'un poste de travail via modal pleine
-  const wsUpdateMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: object }) => api.put(`/devices/${id}`, data),
-    onSuccess: (_data, { id: deviceId }) => {
-      qc.invalidateQueries({ queryKey: ['user-devices', userId] });
-      qc.invalidateQueries({ queryKey: ['devices'] });
-      qc.invalidateQueries({ queryKey: ['device', deviceId] });
-      qc.invalidateQueries({ queryKey: ['stock-summary'] });
-      qc.invalidateQueries({ queryKey: ['stock-devices'] });
-      qc.invalidateQueries({ queryKey: ['stockalerts'] });
-      qc.invalidateQueries({ queryKey: ['maintenance-devices'] });
-      qc.invalidateQueries({ queryKey: ['retired-devices'] });
-      setWsModal(null);
-    },
-  });
+  // ── Confirmation ajout / mise à jour écrans ───────────────────
+  const handleConfirmMonitor = async () => {
+    setMonitorPending(true);
+    try {
+      // Retirer les écrans existants (fake, donc RETIRED direct)
+      for (const d of devicesByType['MONITOR'] ?? []) {
+        await api.delete(`/devices/${d.id}`, { data: { status: 'RETIRED' } });
+      }
+      // Créer les nouveaux écrans
+      for (let i = 0; i < monitorQty; i++) {
+        const hasDocking = monitorScreens[i]?.hasDocking ?? false;
+        await api.post('/devices', {
+          serialNumber:   `MON-${Date.now() + i * 100}`,
+          type:           'MONITOR',
+          brand:          '—',
+          model:          `24"${hasDocking ? ' avec Docking' : ''}`,
+          status:         'ASSIGNED',
+          assignedUserId: userId,
+          condition:      'GOOD',
+          hasDocking,
+        });
+      }
+      invalidateAll();
+      setMonitorOpen(false);
+    } finally {
+      setMonitorPending(false);
+    }
+  };
+
+  // ── Sync monitorScreens quand qty change ──────────────────────
+  const setMonitorQtyAndSync = (qty: 1 | 2) => {
+    setMonitorQty(qty);
+    setMonitorScreens((prev) => {
+      if (qty === 1) return [prev[0] ?? { hasDocking: false }];
+      return [prev[0] ?? { hasDocking: false }, prev[1] ?? { hasDocking: false }];
+    });
+  };
 
 
   if (isLoading) {
@@ -853,10 +942,9 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
     );
   }
 
-  // ── Rendu d'un item équipement ──────────────────────────────
+  // ── Item pour workstations et téléphones (lecture seule + retrait) ──
   const renderDeviceItem = (d: Device, _cat: EquipCategory) => {
     const isWorkstation = WORKSTATION_TYPES.includes(d.type);
-    const isMonitor     = d.type === 'MONITOR';
     const isPhone       = PHONE_CAT_TYPES.includes(d.type);
     const isFake        = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
 
@@ -906,36 +994,12 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
           )}
         </div>
 
-        {/* Docking intégrée — badge visible seulement si activée */}
-        {isMonitor && d.hasDocking && (
-          <button
-            onClick={() => toggleDockingMut.mutate({ id: d.id, hasDocking: false })}
-            disabled={toggleDockingMut.isPending}
-            title="Docking intégrée — cliquer pour retirer"
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-orange-500/40 bg-orange-500/10 text-orange-400 text-[10px] font-medium transition-colors flex-shrink-0 disabled:opacity-50 hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-400"
-          >
-            <Layers size={10} />
-            Docking
-          </button>
-        )}
-
         {/* Statut */}
         <StatusBadge status={d.status} />
 
-        {/* Actions */}
+        {/* Retrait uniquement — plus d'édition depuis cet onglet */}
         {canEdit && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={() => {
-                if (isWorkstation) setWsModal({ device: d, type: d.type });
-                else if (PHONE_CAT_TYPES.includes(d.type)) setPhoneModal({ device: d, type: d.type });
-                else setEditingDevice(d);
-              }}
-              title="Modifier"
-              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
-            >
-              <Pencil size={12} />
-            </button>
             <button
               onClick={() => setRemoveConfirm({ device: d })}
               title={isFake ? 'Retirer' : 'Désaffecter'}
@@ -949,210 +1013,341 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
     );
   };
 
-  // ── Rendu d'une section (workstation / peripherals) ─────────
-  const renderSection = (title: string, categories: EquipCategory[]) => (
-    <div>
-      <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">{title}</p>
-      <GlassCard padding="none">
-        {categories.map((cat, idx) => {
-          // La catégorie KEYBOARD affiche aussi les MOUSE
-          const devices = cat.type === 'KEYBOARD'
-            ? [...(devicesByType['KEYBOARD'] ?? []), ...(devicesByType['MOUSE'] ?? [])]
-            : (devicesByType[cat.type] ?? []);
-          const hasItems   = devices.length > 0;
-          const isAdding   = addingType === cat.type;
-          const isDocking  = cat.type === 'DOCKING_STATION';
-          const isDuplicate = cat.section === 'workstation' && devices.length > 1;
-          const { Icon }   = cat;
+  // ── Rendu d'une catégorie workstation ou téléphone (lecture + retrait) ──
+  const renderReadOnlyCategory = (cat: EquipCategory, idx: number) => {
+    const devices = cat.type === 'KEYBOARD'
+      ? [...(devicesByType['KEYBOARD'] ?? []), ...(devicesByType['MOUSE'] ?? [])]
+      : (devicesByType[cat.type] ?? []);
+    const hasItems    = devices.length > 0;
+    const isDuplicate = cat.section === 'workstation' && devices.length > 1;
+    const { Icon } = cat;
+    return (
+      <div key={cat.type} className={idx > 0 ? 'border-t border-[var(--border-glass)]' : ''}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${hasItems ? cat.bg : 'bg-white/5'}`}>
+            <Icon size={15} className={hasItems ? cat.color : 'text-[var(--text-muted)]'} />
+          </div>
+          <span className={`text-sm font-medium flex-1 ${hasItems ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+            {cat.label}
+            {hasItems && (
+              <span className="ml-2 text-[10px] font-normal text-[var(--text-muted)]">({devices.length})</span>
+            )}
+          </span>
+          {isDuplicate && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 text-[9px] font-semibold">
+              <AlertTriangle size={9} />
+              {devices.length} postes
+            </span>
+          )}
+        </div>
+        {devices.map((d) => renderDeviceItem(d, cat))}
+      </div>
+    );
+  };
 
-          return (
-            <div key={cat.type} className={idx > 0 ? 'border-t border-[var(--border-glass)]' : ''}>
+  // ── Toggle simple (DOCKING_STATION / HEADSET / KEYBOARD) ────
+  const renderToggleCategory = (cat: EquipCategory, idx: number) => {
+    const devices = cat.type === 'KEYBOARD'
+      ? [...(devicesByType['KEYBOARD'] ?? []), ...(devicesByType['MOUSE'] ?? [])]
+      : (devicesByType[cat.type] ?? []);
+    const hasItems  = devices.length > 0;
+    const isLoading = togglePending === cat.type;
+    const { Icon } = cat;
+    return (
+      <div key={cat.type} className={idx > 0 ? 'border-t border-[var(--border-glass)]' : ''}>
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors duration-300 ${hasItems ? cat.bg : 'bg-white/5'}`}>
+            <Icon size={15} className={`transition-colors duration-300 ${hasItems ? cat.color : 'text-[var(--text-muted)]'}`} />
+          </div>
+          <span className={`text-sm font-medium flex-1 transition-colors duration-300 ${hasItems ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+            {cat.label}
+          </span>
+          {canEdit && (
+            <ToggleSwitch
+              on={hasItems}
+              loading={isLoading}
+              onClick={() => handleToggleSimple(cat.type, hasItems, devices)}
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
 
-              {/* ── Header catégorie ── */}
-              <div className="flex items-center gap-3 px-4 py-3">
-                {/* Icône */}
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${hasItems ? cat.bg : 'bg-white/5'}`}>
-                  <Icon size={15} className={hasItems ? cat.color : 'text-[var(--text-muted)]'} />
+  // ── Catégorie Écrans — toggle + panneau de configuration ──────
+  const renderMonitorCategory = (idx: number) => {
+    const cat      = EQUIP_CATEGORIES.find((c) => c.type === 'MONITOR')!;
+    const monitors = devicesByType['MONITOR'] ?? [];
+    const hasMonitors = monitors.length > 0;
+    const withDocking = monitors.filter((m) => m.hasDocking).length;
+
+    const summaryText = hasMonitors
+      ? `${monitors.length} écran${monitors.length > 1 ? 's' : ''} · ${withDocking} avec docking`
+      : '';
+
+    return (
+      <div key="MONITOR" className={idx > 0 ? 'border-t border-[var(--border-glass)]' : ''}>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors duration-300 ${hasMonitors ? cat.bg : 'bg-white/5'}`}>
+            <Monitor size={15} className={`transition-colors duration-300 ${hasMonitors ? cat.color : 'text-[var(--text-muted)]'}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className={`text-sm font-medium transition-colors duration-300 ${hasMonitors ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+              {cat.label}
+            </span>
+            {hasMonitors && (
+              <span className="ml-2 text-[10px] text-[var(--text-muted)]">{summaryText}</span>
+            )}
+          </div>
+          {canEdit && (
+            <ToggleSwitch
+              on={hasMonitors}
+              loading={monitorPending}
+              onClick={() => {
+                if (hasMonitors) {
+                  handleRemoveAllMonitors();
+                } else {
+                  setMonitorQty(1);
+                  setMonitorScreens([{ hasDocking: false }]);
+                  setMonitorOpen(true);
+                }
+              }}
+            />
+          )}
+        </div>
+
+        {/* Panneau de configuration (uniquement à l'ajout) */}
+        <AnimatePresence initial={false}>
+          {monitorOpen && !hasMonitors && (
+            <motion.div
+              key="monitor-config"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div className="px-4 pb-4 pt-1 border-t border-[var(--border-glass)] bg-primary/[0.04] space-y-4">
+
+                {/* Quantité */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-secondary)] w-20 flex-shrink-0">
+                    Quantité
+                  </span>
+                  <div className="flex gap-1.5">
+                    {([1, 2] as const).map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setMonitorQtyAndSync(n)}
+                        className="w-9 h-9 text-sm font-semibold rounded-xl border transition-all duration-200"
+                        style={monitorQty === n ? {
+                          background: 'rgba(99,102,241,0.18)',
+                          borderColor: 'rgba(99,102,241,0.45)',
+                          color: 'rgb(129,140,248)',
+                          boxShadow: '0 0 12px rgba(99,102,241,0.18)',
+                        } : {
+                          background: 'transparent',
+                          borderColor: 'var(--border-glass)',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Label */}
-                <span className={`text-sm font-medium flex-1 ${hasItems ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
-                  {cat.label}
-                  {hasItems && !isDocking && (
-                    <span className="ml-2 text-[10px] font-normal text-[var(--text-muted)]">
-                      ({devices.length})
-                    </span>
-                  )}
-                </span>
-
-                {/* Badge doublon workstation */}
-                {isDuplicate && (
-                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 text-[9px] font-semibold">
-                    <AlertTriangle size={9} />
-                    {devices.length} postes
+                {/* Sélection modèle par écran */}
+                <div className="space-y-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
+                    Modèle
                   </span>
-                )}
-
-                {/* Docking station : toggle simple Oui/Non */}
-                {isDocking ? (
-                  canEdit && (
-                    hasItems ? (
-                      <button
-                        onClick={() => setRemoveConfirm({ device: devices[0] })}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-400 transition-colors"
-                      >
-                        <CheckCircle size={12} />
-                        Oui — retirer
-                      </button>
-                    ) : (
-                      !isAdding && (
-                        <button
-                          onClick={() => setAddingType('DOCKING_STATION')}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:border-emerald-400/30 hover:text-emerald-400 transition-colors"
-                        >
-                          <Plus size={12} />
-                          Ajouter
-                        </button>
-                      )
-                    )
-                  )
-                ) : (
-                  /* Bouton + Ajouter visible pour toutes les autres catégories */
-                  canEdit && !isAdding && (
-                    <button
-                      onClick={() => {
-                        if (WORKSTATION_CAT_TYPES.includes(cat.type)) setWsAssignModal({ type: cat.type });
-                        else if (PHONE_CAT_TYPES.includes(cat.type)) setPhoneModal({ device: null, type: cat.type });
-                        else setAddingType(cat.type);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-colors"
+                  {Array.from({ length: monitorQty }, (_, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="flex items-center gap-2"
                     >
-                      <Plus size={12} />
-                      Ajouter
-                    </button>
-                  )
-                )}
-              </div>
+                      <span className="text-xs text-[var(--text-muted)] w-14 flex-shrink-0">
+                        Écran {monitorQty > 1 ? i + 1 : ''}
+                      </span>
+                      <div className="flex gap-1.5 flex-1">
+                        {[
+                          { label: '24"',             hasDocking: false },
+                          { label: '24" avec Docking', hasDocking: true  },
+                        ].map((opt) => {
+                          const active = (monitorScreens[i]?.hasDocking ?? false) === opt.hasDocking;
+                          return (
+                            <button
+                              key={opt.label}
+                              type="button"
+                              onClick={() => setMonitorScreens((prev) => {
+                                const next = [...prev];
+                                next[i] = { hasDocking: opt.hasDocking };
+                                return next;
+                              })}
+                              className="flex-1 py-1.5 text-xs font-medium rounded-lg border transition-all duration-200"
+                              style={active ? {
+                                background: opt.hasDocking
+                                  ? 'rgba(245,158,11,0.15)'
+                                  : 'rgba(16,185,129,0.12)',
+                                borderColor: opt.hasDocking
+                                  ? 'rgba(245,158,11,0.35)'
+                                  : 'rgba(16,185,129,0.30)',
+                                color: opt.hasDocking ? 'rgb(251,191,36)' : 'rgb(52,211,153)',
+                              } : {
+                                background: 'transparent',
+                                borderColor: 'var(--border-glass)',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
 
-              {/* ── Items existants ── */}
-              {devices.map((d) => renderDeviceItem(d, cat))}
-
-              {/* ── Formulaire ajout inline ── */}
-              <AnimatePresence>
-                {isAdding && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.15 }}
-                    style={{ overflow: 'hidden' }}
+                {/* Actions */}
+                <div className="flex gap-2 pt-1">
+                  <motion.button
+                    type="button"
+                    onClick={handleConfirmMonitor}
+                    disabled={monitorPending}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="btn-primary px-4 py-2 text-xs flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    <QuickAddForm
-                      type={cat.type}
-                      assignedUserId={userId}
-                      allModels={allModels}
-                      onSuccess={() => setAddingType(null)}
-                      onCancel={() => setAddingType(null)}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          );
-        })}
-      </GlassCard>
-    </div>
-  );
+                    {monitorPending
+                      ? <><Loader2 size={12} className="animate-spin" />En cours…</>
+                      : <><CheckCircle size={12} />Confirmer</>
+                    }
+                  </motion.button>
+                  <button
+                    type="button"
+                    onClick={() => setMonitorOpen(false)}
+                    className="btn-secondary px-4 py-2 text-xs"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
 
-  const workstations = EQUIP_CATEGORIES.filter((c) => c.section === 'workstation');
-  const peripherals  = EQUIP_CATEGORIES.filter((c) => c.section === 'peripheral');
+  // ── Sections ─────────────────────────────────────────────────
+  const workstationCats = EQUIP_CATEGORIES.filter((c) => c.section === 'workstation');
+  const phoneCats       = EQUIP_CATEGORIES.filter((c) => PHONE_CAT_TYPES.includes(c.type));
+  const toggleCats      = EQUIP_CATEGORIES.filter(
+    (c) => c.section === 'peripheral' && !PHONE_CAT_TYPES.includes(c.type) && c.type !== 'MONITOR'
+  );
 
   return (
     <div className="space-y-4">
-      {renderSection('Poste de travail', workstations)}
-      {renderSection('Périphériques', peripherals)}
 
-      {/* Formulaire édition périphérique (drawer latéral) */}
-      {canEdit && (
-        <DeviceForm
-          device={editingDevice}
-          isOpen={!!editingDevice}
-          isSaving={updateEquipMut.isPending}
-          isManager={isManager}
-          formTitle={editingDevice ? `Modifier — ${editingDevice.brand} ${editingDevice.model}` : undefined}
-          onClose={() => setEditingDevice(null)}
-          onSubmit={(data) => editingDevice && updateEquipMut.mutate({ id: editingDevice.id, data })}
-        />
-      )}
+      {/* ── Section Postes de travail (lecture seule) ── */}
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">
+          Poste de travail
+        </p>
+        <GlassCard padding="none">
+          {workstationCats.map((cat, i) => renderReadOnlyCategory(cat, i))}
+        </GlassCard>
+      </div>
 
-      {/* Modal Smartphone / Tablette */}
-      {canEdit && phoneModal && (
-        <PhoneModal
-          type={phoneModal.type}
-          userId={userId}
-          device={phoneModal.device}
-          onClose={() => setPhoneModal(null)}
-        />
-      )}
+      {/* ── Section Périphériques ── */}
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">
+          Périphériques
+        </p>
+        <GlassCard padding="none">
+          {/* Smartphones / Tablettes — lecture seule */}
+          {phoneCats.map((cat, i) => renderReadOnlyCategory(cat, i))}
 
-      {/* Modal édition poste de travail */}
-      {canEdit && wsModal && (
-        <DeviceForm
-          device={wsModal.device}
-          isOpen={true}
-          isSaving={wsUpdateMut.isPending}
-          isManager={isManager}
-          modal={true}
-          hideUserField={true}
-          forcedUserId={userId}
-          initialType={wsModal.type}
-          formTitle={`Modifier — ${wsModal.device.brand} ${wsModal.device.model}`}
-          onClose={() => setWsModal(null)}
-          onSubmit={(data) => wsUpdateMut.mutate({ id: wsModal.device.id, data })}
-        />
-      )}
+          {/* Écrans — toggle + config */}
+          {renderMonitorCategory(phoneCats.length)}
 
-      {/* Modal affectation poste de travail depuis pool stock */}
-      {canEdit && wsAssignModal && (
-        <WorkstationModal
-          type={wsAssignModal.type}
-          userId={userId}
-          onClose={() => setWsAssignModal(null)}
-        />
-      )}
+          {/* Station d'accueil / Casque / Clavier-Souris — toggle simple */}
+          {toggleCats.map((cat, i) => renderToggleCategory(cat, phoneCats.length + 1 + i))}
+        </GlassCard>
+      </div>
 
-      {/* ── Confirmation retrait équipement ── */}
-      {removeConfirm && (() => {
+      {/* ── Popup désaffectation (workstations et téléphones) ── */}
+      {removeConfirm && createPortal((() => {
         const d = removeConfirm.device;
         const isFake = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
+        const closePopup = () => { setRemoveConfirm(null); setRemoveStatus('IN_STOCK'); setRemoveDeadline(''); };
         return (
           <>
-            <motion.div
-              className="fixed inset-0 z-50 bg-black/60"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              onClick={() => { setRemoveConfirm(null); setRemoveStatus('IN_STOCK'); }}
+            {/* Backdrop — assez léger pour laisser les couleurs de la page traverser le blur du card */}
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 150, background: 'rgba(0,0,10,0.42)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', cursor: 'pointer' }}
+              onClick={closePopup}
             />
+            {/* Modal card — portal = hors du contexte transform de AppShell */}
             <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              style={{ position: 'fixed', inset: 0, zIndex: 151, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'none' }}
+              initial={{ opacity: 0, scale: 0.82, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 16 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 36, mass: 0.72 }}
             >
-              <div className="glass-card p-6 max-w-sm w-full space-y-5 pointer-events-auto">
-                <div>
-                  <h3 className="font-semibold text-[var(--text-primary)]">
-                    {isFake ? 'Retirer cet équipement' : 'Désaffecter cet équipement'}
-                  </h3>
-                  <p className="text-sm text-[var(--text-muted)] mt-1">
-                    <span className="font-mono font-semibold text-[var(--text-primary)]">
-                      {d.assetTag || d.serialNumber}
-                    </span>
-                    {' '}— {d.brand} {d.model}
-                  </p>
+              <div className="modal-glass w-full max-w-sm pointer-events-auto p-6 space-y-5">
+
+                {/* ── Décorations specular liquid glass ── */}
+                {/* Ligne de lumière sur le bord supérieur */}
+                <div className="absolute inset-x-0 top-0 h-[2px] pointer-events-none" style={{
+                  borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
+                  background: 'linear-gradient(90deg, transparent 5%, rgba(180,160,255,0.80) 35%, rgba(99,200,255,0.60) 65%, transparent 95%)',
+                }} />
+                {/* Reflet vertical gauche */}
+                <div className="absolute top-0 left-0 pointer-events-none" style={{ width: '2px', height: '60%', background: 'linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)' }} />
+                {/* Orbe indigo haut-droite */}
+                <div className="absolute pointer-events-none" style={{ top: '-40px', right: '-32px', width: '160px', height: '160px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.28) 0%, rgba(6,182,212,0.10) 45%, transparent 70%)', filter: 'blur(8px)' }} />
+                {/* Orbe amber bas-gauche — accent chaud */}
+                <div className="absolute pointer-events-none" style={{ bottom: '-20px', left: '-20px', width: '100px', height: '100px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(245,158,11,0.14) 0%, transparent 70%)', filter: 'blur(6px)' }} />
+
+                {/* ── En-tête ── */}
+                <div className="flex items-start gap-3 relative z-10">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5" style={{
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.20) 0%, rgba(234,88,12,0.12) 100%)',
+                    border: '1px solid rgba(245,158,11,0.40)',
+                    boxShadow: '0 0 12px rgba(245,158,11,0.20), inset 0 1px 0 rgba(255,255,255,0.15)',
+                  }}>
+                    <AlertTriangle size={17} style={{ color: 'rgb(251,191,36)' }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-[15px] leading-tight" style={{ color: 'var(--text-primary)' }}>
+                      {isFake ? 'Retirer cet équipement' : 'Désaffecter cet équipement'}
+                    </h3>
+                    <p className="text-[13px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      <span className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {d.assetTag || d.serialNumber}
+                      </span>
+                      {' '}<span style={{ opacity: 0.70 }}>— {d.brand} {d.model}</span>
+                    </p>
+                  </div>
                 </div>
 
+                {/* Séparateur lumineux */}
+                <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(139,120,255,0.50) 30%, rgba(99,200,255,0.35) 70%, transparent)' }} />
+
+                {/* ── Sélecteur statut (vrais devices uniquement) ── */}
                 {!isFake && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-widest text-primary">
-                      Nouveau statut <span className="text-red-400">*</span>
+                  <div className="space-y-2 relative z-10">
+                    <label className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)', letterSpacing: '0.10em' }}>
+                      Nouveau statut <span style={{ color: '#f87171' }}>*</span>
                     </label>
                     <AppSelect
                       value={removeStatus}
@@ -1165,7 +1360,7 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
                         { value: 'STOLEN',         label: 'Volé — signalement vol' },
                       ]}
                     />
-                    <p className="text-[10px] text-[var(--text-muted)]">
+                    <p className="text-[11.5px] leading-relaxed min-h-[1.25rem]" style={{ color: 'var(--text-secondary)', opacity: 0.85 }}>
                       {removeStatus === 'IN_STOCK'       && "L'équipement retourne dans le pool de stock disponible."}
                       {removeStatus === 'IN_MAINTENANCE' && "L'équipement est envoyé en atelier et apparaîtra dans l'onglet Maintenance."}
                       {removeStatus === 'RETIRED'        && "L'équipement est mis au rebut et apparaîtra dans l'onglet Déchets."}
@@ -1176,53 +1371,58 @@ function TabEquipements({ userId, canEdit, isManager }: { userId: string; canEdi
                 )}
 
                 {!isFake && removeStatus === 'IN_MAINTENANCE' && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                      Deadline de retour <span className="text-[var(--text-muted)]">(optionnel)</span>
+                  <div className="space-y-2 pt-1 relative z-10">
+                    <label className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)', letterSpacing: '0.10em' }}>
+                      Deadline de retour <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optionnel)</span>
                     </label>
-                    <input
-                      type="date"
-                      value={removeDeadline}
-                      onChange={(e) => setRemoveDeadline(e.target.value)}
-                      className="input-glass w-full text-sm"
-                    />
+                    <input type="date" value={removeDeadline} onChange={(e) => setRemoveDeadline(e.target.value)} className="input-glass w-full text-sm" />
                   </div>
                 )}
 
                 {isFake && (
-                  <p className="text-xs text-[var(--text-muted)]">
+                  <p className="text-[12px] leading-relaxed relative z-10" style={{ color: 'var(--text-secondary)', opacity: 0.85 }}>
                     Cet équipement sera retiré de la liste et archivé dans les déchets.
                   </p>
                 )}
 
-                <p className="text-xs text-[var(--text-muted)] border-t border-[var(--border-glass)] pt-3">
+                {/* Note de traçabilité */}
+                <p className="text-[11px] leading-relaxed relative z-10 pt-3" style={{
+                  color: 'var(--text-muted)',
+                  borderTop: '1px solid rgba(139,120,255,0.20)',
+                }}>
                   L'action sera tracée dans l'historique avec votre nom et la date.
                 </p>
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => { setRemoveConfirm(null); setRemoveStatus('IN_STOCK'); setRemoveDeadline(''); }}
-                    className="btn-secondary flex-1 py-2 text-sm"
-                  >
+                {/* ── Actions ── */}
+                <div className="flex gap-3 relative z-10">
+                  <button onClick={closePopup} className="btn-secondary flex-1 py-2.5 text-sm">
                     Annuler
                   </button>
-                  <button
+                  <motion.button
                     onClick={() => removeMut.mutate({
                       device: d,
                       status: isFake ? 'RETIRED' : removeStatus,
                       maintenanceDeadline: !isFake && removeStatus === 'IN_MAINTENANCE' ? removeDeadline || undefined : undefined,
                     })}
                     disabled={removeMut.isPending}
-                    className="flex-1 py-2 text-sm rounded-xl bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 transition-colors font-medium disabled:opacity-50"
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="flex-1 py-2.5 text-[13px] rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{
+                      background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+                      border: '1px solid rgba(245,158,11,0.45)',
+                      color: '#ffffff',
+                      boxShadow: '0 4px 20px rgba(245,158,11,0.35), inset 0 1px 0 rgba(255,255,255,0.20)',
+                    }}
                   >
-                    {removeMut.isPending ? 'En cours…' : 'Confirmer'}
-                  </button>
+                    {removeMut.isPending ? <><Loader2 size={14} className="animate-spin" />En cours…</> : 'Confirmer'}
+                  </motion.button>
                 </div>
               </div>
             </motion.div>
           </>
         );
-      })()}
+      })(), document.body)}
     </div>
   );
 }

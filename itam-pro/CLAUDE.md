@@ -94,11 +94,38 @@ backend/src/
 - **Icône DOCKING_STATION** : utiliser `Layers` (lucide-react n'a pas `Dock`)
 - Le frontend proxie `/api` → `http://localhost:3001` via Vite (`vite.config.ts`)
 - Toutes les pages sont **lazy-loaded** dans `App.tsx`
-- Design system : classes `.glass-card`, `.btn-primary`, `.btn-secondary`, `.input-glass` définies dans `index.css`
+- Design system : classes `.glass-card`, `.btn-primary`, `.btn-secondary`, `.input-glass`, `.modal-glass` définies dans `index.css`
 - Variables CSS : `--text-primary`, `--text-secondary`, `--text-muted`, `--bg-primary`, `--bg-secondary`, `--border-glass`
 - Dark/light mode : attribut `data-theme` sur `<html>`, géré par `uiStore`
 - **AppSelect dropdown** : `background: 'var(--bg-secondary)'` + `color: 'var(--text-primary)'` — compatible light ET dark mode
 - **Navigation contextuelle** : toujours passer `{ state: { from: '/stock' } }` (ou `/orders`, etc.) lors d'un `navigate('/devices/:id')` depuis une page autre que Appareils. DeviceDetail lit `location.state?.from ?? '/devices'` pour le bouton retour.
+
+### Règles design system — popups & drawers (validées 2026-04-14)
+
+**`createPortal` obligatoire pour TOUT élément `position: fixed`**
+AppShell utilise `motion.div` avec `key={pathname}` pour les transitions de page → crée un CSS transform context → tout `position: fixed` dans ses descendants devient relatif à ce context, pas au viewport. Symptômes : backdrop ne couvre pas toute la hauteur, drawer ne sort pas du bon bord, AppSelect dropdown rogné.
+**Fix universel** : `createPortal(content, document.body)` sur tous les overlays/drawers/popups.
+
+**Backdrop léger pour vrai effet liquid glass**
+Un backdrop `rgba(0,0,0,0.60)` + `blur(12px)` sur le backdrop lui-même tue le glass. Le `backdrop-filter` du `.modal-glass` doit avoir quelque chose de coloré à flouter (le gradient de la page). Règle :
+- Backdrop : `rgba(0,0,10,0.42)` + `backdropFilter: 'blur(4px)'` — laisse les couleurs de la page passer
+- Le card lui-même gère son glassmorphism via `.modal-glass`
+
+**`.modal-glass` — classe CSS (index.css)**
+- `backdrop-filter: blur(56px) saturate(180%)`
+- Dark mode : gradient teinté `rgba(99,102,241,0.20)` indigo → `rgba(10,10,24,0.72)` → `rgba(6,182,212,0.08)` cyan — jamais un flat dark (= béton gris)
+- Light mode : `linear-gradient rgba(255,255,255,0.92) → rgba(245,247,255,0.80)` — assez opaque pour le contraste texte
+- Décors obligatoires dans chaque popup : ligne specular top (`h-[2px]`, gradient violet→cyan), reflet vertical gauche (`2px`, gradient blanc→transparent), orbe indigo haut-droite (radial-gradient + `filter:blur(8px)`)
+
+**Z-index stack popups**
+- Backdrop : `z-index: 150`
+- Card popup : `z-index: 151`
+- AppSelect dropdown (Radix UI, via `Select.Portal`) : `z-[200]` — toujours au-dessus du card
+- DeviceForm drawer : `z-index: 201`
+- TopBar search portal : `z-index: 9999`
+
+**DeviceForm drawer — widget flottant arrondi**
+Pas un panneau plein bord. Position : `right:16px, top:16px, bottom:16px`, `width:440px`. Utilise `.modal-glass`. Animation spring `x: calc(100%+24px) → 0`. Les décorations (orbes, ligne specular) suivent le même pattern que les popups.
 
 ### Backend
 - `req.currentUser` est typé dans `auth.middleware.ts` (id, email, displayName, role)
@@ -1071,6 +1098,45 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 
 ---
 
+### ✅ Phase 22 — Liquid glass UI, popups & drawer redesign (2026-04-14)
+
+#### Problèmes résolus
+
+**1. Popup désaffectation "Équipements" (DeviceDetail) — 4 bugs simultanés**
+
+| Symptôme | Cause racine | Fix |
+|---|---|---|
+| Backdrop ne couvre pas toute la page (découpe en haut) | `position:fixed` dans AppShell `motion.div` (transform context) | `createPortal(…, document.body)` |
+| AppSelect uncliquable après sélection | `AnimatePresence + IIFE + fragment` = unstable re-mount sur chaque state change | Remplacé par `{removeConfirm && createPortal(…)}` conditionnel stable |
+| Popup non fonctionnelle (stock/déchet) | Même cause + z-index backdrop (z-90) conflit avec AppSelect (z-200) | z-150/151 pour backdrop/card, AppSelect reste z-200 |
+| Fond trop gris, pas d'effet glass | `.modal-glass` dark mode = `rgba(14,14,28,0.55)` flat + backdrop 0.60 opaque = blur sur fond noir = gris | Voir redesign ci-dessous |
+
+**2. Redesign `.modal-glass` (index.css)**
+- **Avant** : dark `rgba(14,14,28,0.55)` flat — `backdrop-filter` floutait un fond presque noir = résultat gris uniforme
+- **Après** : gradient teinté indigo/cyan en dark, plus opaque en light, bordure et highlight specular renforcés
+- **Insight clé** : le `backdrop-filter` du card a besoin de couleur derrière lui. Backdrop `rgba(0,0,10,0.42)` + `blur(4px)` léger laisse le gradient violet/bleu de la page traverser → blur coloré = vrai liquid glass.
+
+**3. DeviceForm drawer — floating widget arrondi**
+- **Avant** : panneau plein hauteur `fixed right-0 top-0 bottom-0`, fond opaque `var(--surface-primary)`, carré
+- **Après** : widget flottant `right:16px, top:16px, bottom:16px, width:440px`, classe `.modal-glass`, décorations specular identiques aux popups
+- `createPortal` ajouté à `DeviceForm.tsx` — même raison que les popups (transform context AppShell)
+- Bouton "Enregistrer" : gradient indigo plein avec glow, cohérent avec bouton "Confirmer" amber des popups
+- Bouton modal centrée (`modal=true`) : même upgrade glass
+
+**4. Popup désaffectation Devices.tsx alignée**
+- Migrée de `AnimatePresence` inline → `createPortal` stable (même pattern que DeviceDetail)
+- Design aligné : backdrop 0.42, orbes renforcés, séparateur indigo/cyan, bouton amber gradient plein
+
+#### Fichiers modifiés
+| Fichier | Changement |
+|---|---|
+| `frontend/src/index.css` | `.modal-glass` dark/light redesign — gradient teinté, highlights renforcés |
+| `frontend/src/pages/DeviceDetail.tsx` | `createPortal` import + popup Équipements migrée (z-150/151, stable conditional) |
+| `frontend/src/pages/Devices.tsx` | `createPortal` import + popup désaffectation migrée + design aligné |
+| `frontend/src/components/devices/DeviceForm.tsx` | `createPortal` import + drawer → widget flottant arrondi `.modal-glass` |
+
+---
+
 ## En attente
 
 - ⏳ App Registration Azure Entra ID (action admin IT Elkem requise)
@@ -1078,3 +1144,4 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 - ⏳ Page Login : bouton Microsoft uniquement en mode SSO
 - ⏳ PWA polish (service worker, manifest, icônes complètes)
 - ⏳ Page Dashboard — révision finale
+- ⏳ Étendre le redesign liquid glass aux autres drawers/modaux du site (DeviceDetail modal d'assignation, etc.)

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import {
   Plus, LayoutGrid, LayoutList, ChevronLeft, ChevronRight,
   Laptop, Monitor, Smartphone, Tablet, Cpu, Server, Tv, Printer,
-  X, Loader2, Shield, ShieldOff,
+  X, Loader2, Shield, ShieldOff, Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -737,97 +738,121 @@ export default function Devices() {
         />
       )}
 
-      {/* ─── Confirmation désaffectation ─────────────────────── */}
-      {deleting && (
-        <>
-          <motion.div
-            className="fixed inset-0 z-50 bg-black/60"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            onClick={() => { setDeleting(null); setRetireStatus('IN_STOCK'); }}
-          />
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <div className="glass-card p-6 max-w-sm w-full space-y-5 pointer-events-auto">
+      {/* ─── Confirmation désaffectation — portal pour échapper le transform context ── */}
+      {deleting && createPortal((() => {
+        const closePopup = () => { setDeleting(null); setRetireStatus('IN_STOCK'); setMaintenanceDeadline(''); };
+        return (
+          <>
+            {/* Backdrop léger */}
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 150, background: 'rgba(0,0,10,0.42)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', cursor: 'pointer' }}
+              onClick={closePopup}
+            />
 
-              {/* En-tête */}
-              <div>
-                <h3 className="font-semibold text-[var(--text-primary)]">Désaffecter cet équipement</h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">
-                  <span className="font-mono font-semibold text-[var(--text-primary)]">{deleting.assetTag || deleting.serialNumber}</span>
-                  {' '}— {deleting.brand} {deleting.model}
-                </p>
-                {deleting.assignedUser && (
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Actuellement affecté à <span className="font-medium text-[var(--text-secondary)]">{deleting.assignedUser.displayName}</span>
-                  </p>
-                )}
-              </div>
+            {/* Carte modale */}
+            <motion.div
+              style={{ position: 'fixed', inset: 0, zIndex: 151, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'none' }}
+              initial={{ opacity: 0, scale: 0.82, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 16 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 36, mass: 0.72 }}
+            >
+              <div className="modal-glass w-full max-w-sm pointer-events-auto p-6 space-y-5">
 
-              {/* Sélecteur de statut — obligatoire */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-widest text-primary">
-                  Nouveau statut <span className="text-red-400">*</span>
-                </label>
-                <AppSelect
-                  value={retireStatus}
-                  onChange={setRetireStatus}
-                  options={[
-                    { value: 'IN_STOCK',       label: 'Stock — retour en inventaire' },
-                    { value: 'IN_MAINTENANCE', label: 'Maintenance — envoi en atelier' },
-                    { value: 'RETIRED',        label: 'Déchet — mise au rebut' },
-                    { value: 'LOST',           label: 'Perdu — signalement perte' },
-                    { value: 'STOLEN',         label: 'Volé — signalement vol' },
-                  ]}
-                />
-                <p className="text-[10px] text-[var(--text-muted)]">
-                  {retireStatus === 'IN_STOCK'       && 'L\'équipement retourne dans le pool de stock disponible.'}
-                  {retireStatus === 'IN_MAINTENANCE' && 'L\'équipement est envoyé en atelier et apparaîtra dans l\'onglet Maintenance.'}
-                  {retireStatus === 'RETIRED'        && 'L\'équipement est mis au rebut et apparaîtra dans l\'onglet Déchets.'}
-                  {retireStatus === 'LOST'           && 'L\'équipement est signalé perdu et apparaîtra dans l\'onglet Déchets.'}
-                  {retireStatus === 'STOLEN'         && 'L\'équipement est signalé volé et apparaîtra dans l\'onglet Déchets.'}
-                </p>
-              </div>
+                {/* ── Décorations specular liquid glass ── */}
+                <div className="absolute inset-x-0 top-0 h-[2px] pointer-events-none" style={{ borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', background: 'linear-gradient(90deg, transparent 5%, rgba(180,160,255,0.80) 35%, rgba(99,200,255,0.60) 65%, transparent 95%)' }} />
+                <div className="absolute top-0 left-0 pointer-events-none" style={{ width: '2px', height: '60%', background: 'linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)' }} />
+                <div className="absolute pointer-events-none" style={{ top: '-40px', right: '-32px', width: '160px', height: '160px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.28) 0%, rgba(6,182,212,0.10) 45%, transparent 70%)', filter: 'blur(8px)' }} />
+                <div className="absolute pointer-events-none" style={{ bottom: '-20px', left: '-20px', width: '100px', height: '100px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(245,158,11,0.14) 0%, transparent 70%)', filter: 'blur(6px)' }} />
 
-              {retireStatus === 'IN_MAINTENANCE' && (
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-widest text-[var(--text-secondary)]">
-                    Deadline de retour <span className="text-[var(--text-muted)]">(optionnel)</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={maintenanceDeadline}
-                    onChange={(e) => setMaintenanceDeadline(e.target.value)}
-                    className="input-glass w-full text-sm"
-                  />
+                {/* ── En-tête ── */}
+                <div className="flex items-start gap-3 relative z-10">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.20) 0%, rgba(234,88,12,0.12) 100%)', border: '1px solid rgba(245,158,11,0.40)', boxShadow: '0 0 12px rgba(245,158,11,0.20), inset 0 1px 0 rgba(255,255,255,0.15)' }}>
+                    <Trash2 size={17} style={{ color: 'rgb(251,191,36)' }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-[15px] leading-tight" style={{ color: 'var(--text-primary)' }}>
+                      Désaffecter cet équipement
+                    </h3>
+                    <p className="text-[13px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      <span className="font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {deleting.assetTag || deleting.serialNumber}
+                      </span>
+                      {' '}<span style={{ opacity: 0.70 }}>— {deleting.brand} {deleting.model}</span>
+                    </p>
+                    {deleting.assignedUser && (
+                      <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-secondary)', opacity: 0.80 }}>
+                        Affecté à <span className="font-medium">{deleting.assignedUser.displayName}</span>
+                      </p>
+                    )}
+                  </div>
                 </div>
-              )}
 
-              <p className="text-xs text-[var(--text-muted)] border-t border-[var(--border-glass)] pt-3">
-                L'action sera tracée dans l'historique avec votre nom et la date.
-              </p>
+                {/* Séparateur lumineux */}
+                <div className="h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(139,120,255,0.50) 30%, rgba(99,200,255,0.35) 70%, transparent)' }} />
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { setDeleting(null); setRetireStatus('IN_STOCK'); setMaintenanceDeadline(''); }}
-                  className="btn-secondary flex-1 py-2 text-sm"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleDeleteConfirm}
-                  disabled={deleteMut.isPending}
-                  className="flex-1 py-2 text-sm rounded-xl bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 transition-colors font-medium disabled:opacity-50"
-                >
-                  {deleteMut.isPending ? 'En cours…' : 'Confirmer'}
-                </button>
+                {/* ── Sélecteur de statut ── */}
+                <div className="space-y-2 relative z-10">
+                  <label className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)', letterSpacing: '0.10em' }}>
+                    Nouveau statut <span style={{ color: '#f87171' }}>*</span>
+                  </label>
+                  <AppSelect
+                    value={retireStatus}
+                    onChange={setRetireStatus}
+                    options={[
+                      { value: 'IN_STOCK',       label: 'Stock — retour en inventaire' },
+                      { value: 'IN_MAINTENANCE', label: 'Maintenance — envoi en atelier' },
+                      { value: 'RETIRED',        label: 'Déchet — mise au rebut' },
+                      { value: 'LOST',           label: 'Perdu — signalement perte' },
+                      { value: 'STOLEN',         label: 'Volé — signalement vol' },
+                    ]}
+                  />
+                  <p className="text-[11.5px] leading-relaxed min-h-[1.25rem]" style={{ color: 'var(--text-secondary)', opacity: 0.85 }}>
+                    {retireStatus === 'IN_STOCK'       && "L'équipement retourne dans le pool de stock disponible."}
+                    {retireStatus === 'IN_MAINTENANCE' && "L'équipement est envoyé en atelier et apparaîtra dans l'onglet Maintenance."}
+                    {retireStatus === 'RETIRED'        && "L'équipement est mis au rebut et apparaîtra dans l'onglet Déchets."}
+                    {retireStatus === 'LOST'           && "L'équipement est signalé perdu et apparaîtra dans l'onglet Déchets."}
+                    {retireStatus === 'STOLEN'         && "L'équipement est signalé volé et apparaîtra dans l'onglet Déchets."}
+                  </p>
+                </div>
+
+                {/* ── Deadline maintenance ── */}
+                {retireStatus === 'IN_MAINTENANCE' && (
+                  <div className="space-y-2 pt-1 relative z-10">
+                    <label className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)', letterSpacing: '0.10em' }}>
+                      Deadline de retour{' '}
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optionnel)</span>
+                    </label>
+                    <input type="date" value={maintenanceDeadline} onChange={(e) => setMaintenanceDeadline(e.target.value)} className="input-glass w-full text-sm" />
+                  </div>
+                )}
+
+                {/* Note traçabilité */}
+                <p className="text-[11px] leading-relaxed relative z-10 pt-3" style={{ color: 'var(--text-muted)', borderTop: '1px solid rgba(139,120,255,0.20)' }}>
+                  L'action sera tracée dans l'historique avec votre nom et la date.
+                </p>
+
+                {/* ── Boutons ── */}
+                <div className="flex gap-3 relative z-10">
+                  <button onClick={closePopup} className="btn-secondary flex-1 py-2.5 text-sm">
+                    Annuler
+                  </button>
+                  <motion.button
+                    onClick={handleDeleteConfirm}
+                    disabled={deleteMut.isPending}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="flex-1 py-2.5 text-[13px] rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)', border: '1px solid rgba(245,158,11,0.45)', color: '#ffffff', boxShadow: '0 4px 20px rgba(245,158,11,0.35), inset 0 1px 0 rgba(255,255,255,0.20)' }}
+                  >
+                    {deleteMut.isPending ? <><Loader2 size={14} className="animate-spin" />En cours…</> : 'Confirmer'}
+                  </motion.button>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        </>
-      )}
+            </motion.div>
+          </>
+        );
+      })(), document.body)}
     </div>
   );
 }
