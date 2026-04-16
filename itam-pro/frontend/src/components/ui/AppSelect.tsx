@@ -56,7 +56,7 @@ export function AppSelect({
           position="popper"
           sideOffset={4}
           className={clsx(
-            'z-[200] w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl shadow-2xl',
+            'z-[210] w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl shadow-2xl',
             'border border-[var(--border-glass)]',
             'animate-in fade-in-0 zoom-in-95'
           )}

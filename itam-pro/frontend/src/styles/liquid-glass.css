@@ -542,14 +542,14 @@ body::before {
   -webkit-backdrop-filter: blur(20px) saturate(var(--glass-saturation));
 
   /* Pill très arrondie — iOS feel */
-  border: 1px solid var(--table-border);
+  border: 1px solid var(--border-glass);
   border-radius: var(--radius-pill);
   padding: 3px;
   gap: 2px;
 
   box-shadow:
     0 2px 14px rgba(0, 0, 0, 0.10),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
@@ -570,10 +570,9 @@ body::before {
 /* La pill active est rendue via motion.div (layoutId côté React) */
 
 [data-theme="dark"] .toggle-glass {
-  border-color: rgba(255, 255, 255, 0.14);
   box-shadow:
     0 2px 14px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.30);
 }
 
@@ -692,14 +691,13 @@ body::before {
   backdrop-filter: blur(24px) saturate(var(--glass-saturation)) brightness(var(--glass-brightness));
   -webkit-backdrop-filter: blur(24px) saturate(var(--glass-saturation)) brightness(var(--glass-brightness));
 
-  border: 1px solid var(--table-border);
-  border-top-color: rgba(255, 255, 255, 0.48);
+  border: 1px solid var(--border-glass);
   border-radius: var(--radius-xl);   /* 24px — arrondi mais pas pill */
 
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.09),
     0 1px 4px rgba(0, 0, 0, 0.05),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.05);
 }
 
@@ -731,11 +729,9 @@ body::before {
 }
 
 [data-theme="dark"] .tabs-glass {
-  border-color: rgba(255, 255, 255, 0.12);
-  border-top-color: rgba(255, 255, 255, 0.16);
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.28);
 }
 

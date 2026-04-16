@@ -5,9 +5,9 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import {
   Plus, LayoutGrid, LayoutList, ChevronLeft, ChevronRight,
   Laptop, Monitor, Smartphone, Tablet, Cpu, Server, Tv, Printer,
-  X, Loader2, Shield, ShieldOff, Trash2,
+  X, Loader2, Trash2,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDevices, useUpdateDevice, useDeleteDevice } from '../hooks/useDevices';
 import { useDeviceStore } from '../stores/deviceStore';
@@ -185,92 +185,115 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
 
   const canSubmit = !!userId && !!selected && ticketRef.trim().length > 3 && !assignMut.isPending;
 
-  return (
-    <AnimatePresence>
-      <>
-        <motion.div
-          className="fixed inset-0 z-50 bg-black/60"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={onClose}
-        />
-        <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+  return createPortal(
+    <>
+      {/* Backdrop léger — même style que DeviceForm */}
+      <motion.div
+        style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,10,0.42)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', cursor: 'pointer' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.20 }}
+        onClick={onClose}
+      />
+
+      {/* Wrapper centré */}
+      <motion.div
+        style={{ position: 'fixed', inset: 0, zIndex: 201, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', pointerEvents: 'none' }}
+        initial={{ opacity: 0, scale: 0.92, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.94, y: 12 }}
+        transition={{ type: 'spring', stiffness: 460, damping: 36, mass: 0.72 }}
+      >
+        <div
+          className="modal-glass w-full max-w-lg flex flex-col pointer-events-auto relative"
+          style={{ maxHeight: '90vh' }}
+          onClick={(e) => e.stopPropagation()}
         >
-          <motion.div
-            className="w-full max-w-md flex flex-col rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
-            style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', border: '1px solid var(--glass-border)', maxHeight: '90vh' }}
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 38 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* En-tête */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
-              <h2 className="font-semibold text-[var(--text-primary)]">Affecter — {typeLabel}</h2>
-              <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
-                <X size={16} />
-              </button>
+          {/* ── Décorations liquid glass ── */}
+          {/* Ligne specular supérieure */}
+          <div className="absolute inset-x-0 top-0 h-[2px] pointer-events-none" style={{ borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', background: 'linear-gradient(90deg, transparent 5%, rgba(180,160,255,0.80) 35%, rgba(99,200,255,0.60) 65%, transparent 95%)' }} />
+          {/* Reflet vertical gauche */}
+          <div className="absolute top-0 left-0 pointer-events-none" style={{ width: '2px', height: '60%', background: 'linear-gradient(180deg, rgba(255,255,255,0.30) 0%, transparent 100%)' }} />
+          {/* Orbe indigo haut-droite */}
+          <div className="absolute pointer-events-none" style={{ top: '-40px', right: '-32px', width: '160px', height: '160px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.28) 0%, rgba(6,182,212,0.10) 45%, transparent 70%)', filter: 'blur(8px)' }} />
+
+          {/* En-tête */}
+          <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 relative z-10" style={{ borderBottom: '1px solid rgba(139,120,255,0.20)' }}>
+            <div className="min-w-0 flex-1 pr-3">
+              <h2 className="font-bold text-[15px] truncate" style={{ color: 'var(--text-primary)' }}>
+                Affecter — {typeLabel}
+              </h2>
             </div>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-150"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
+            >
+              <X size={15} style={{ color: 'var(--text-muted)' }} />
+            </button>
+          </div>
 
-            {/* Corps scrollable */}
-            <div ref={bodyRef} className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Corps scrollable */}
+          <div ref={bodyRef} className="flex-1 overflow-y-auto p-5 space-y-5 relative z-10">
 
-              {/* ── Utilisateur ── */}
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Utilisateur</p>
-                <UserCombobox
-                  value={userId}
-                  displayValue={userDisplay}
-                  onChange={(id, user) => {
-                    setUserId(id ?? '');
-                    setUserDisplay(user ? `${user.displayName} (${user.email})` : undefined);
-                  }}
-                />
-              </div>
+            {/* ── Utilisateur ── */}
+            <section>
+              <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Utilisateur</h3>
+              <UserCombobox
+                value={userId}
+                displayValue={userDisplay}
+                onChange={(id, user) => {
+                  setUserId(id ?? '');
+                  setUserDisplay(user ? `${user.displayName} (${user.email})` : undefined);
+                }}
+              />
+            </section>
 
-              <div className="h-px bg-[var(--border-glass)]" />
+            <div className="h-px" style={{ background: 'rgba(139,120,255,0.15)' }} />
 
-              {/* ── Appareil depuis le pool ── */}
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Appareil du stock</p>
+            {/* ── Appareil depuis le pool ── */}
+            <section className="space-y-3">
+              <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Appareil du stock</h3>
 
-                {!selected ? (
-                  /* ── Recherche ── */
-                  <div className="relative">
-                    <div className="space-y-1">
-                      <label className="text-xs text-[var(--text-secondary)]">
-                        {isPhone ? 'Rechercher par SN ou IMEI' : 'Numéro de série'}
-                      </label>
-                      <input
-                        value={search}
-                        onChange={(e) => { setSearch(e.target.value); setShowDrop(true); }}
-                        onFocus={() => setShowDrop(true)}
-                        placeholder="Ex : ABC1234…"
-                        className="input-glass py-2 text-sm w-full font-mono"
-                      />
-                    </div>
-                    {showDrop && search.length >= 1 && (
-                      <div
-                        className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
-                        style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
-                      >
-                        {isFetching ? (
-                          <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
-                            <Loader2 size={13} className="animate-spin" />
-                            <span className="text-xs">Recherche…</span>
-                          </div>
-                        ) : pool.length === 0 ? (
-                          <div className="px-4 py-3 text-xs text-[var(--text-muted)] text-center">
-                            Aucun {typeLabel.toLowerCase()} disponible en stock
-                          </div>
-                        ) : (
-                          pool.map((p) => (
+              {!selected ? (
+                /* ── Recherche ── */
+                <div className="relative">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">
+                      {isPhone ? 'Rechercher par SN ou IMEI' : 'Numéro de série'}
+                    </label>
+                    <input
+                      value={search}
+                      onChange={(e) => { setSearch(e.target.value); setShowDrop(true); }}
+                      onFocus={() => setShowDrop(true)}
+                      placeholder="Ex : ABC1234…"
+                      className="input-glass py-2 text-sm w-full font-mono"
+                    />
+                  </div>
+                  {showDrop && search.length >= 1 && (
+                    <div
+                      className="absolute z-10 top-full left-0 right-0 mt-1 rounded-xl border border-[var(--border-glass)] shadow-xl overflow-hidden"
+                      style={{ background: 'var(--bg-secondary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
+                    >
+                      {isFetching ? (
+                        <div className="flex items-center justify-center py-3 gap-2 text-[var(--text-muted)]">
+                          <Loader2 size={13} className="animate-spin" />
+                          <span className="text-xs">Recherche…</span>
+                        </div>
+                      ) : pool.length === 0 ? (
+                        <div className="px-4 py-3 text-xs text-[var(--text-muted)] text-center">
+                          Aucun {typeLabel.toLowerCase()} disponible en stock
+                        </div>
+                      ) : (
+                        <div className="p-1 max-h-48 overflow-y-auto">
+                          {pool.map((p) => (
                             <button
                               key={p.id}
                               onClick={() => handleSelect(p)}
-                              className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-[var(--border-glass)] last:border-0"
+                              className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-indigo-600/20 transition-colors"
                             >
                               <p className="text-xs font-semibold text-[var(--text-primary)]">{p.brand} {p.model}</p>
                               <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
@@ -281,196 +304,215 @@ function AssignFromPoolModal({ type, onClose }: { type: DeviceType; onClose: () 
                                 )}
                               </p>
                             </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  /* ── Device sélectionné ── */
-                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-
-                    {/* Carte appareil */}
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400 mb-1">Appareil sélectionné</p>
-                      <p className="text-sm font-semibold text-[var(--text-primary)]">{selected.brand} {selected.model}</p>
-                      {[selected.processor, selected.ram, selected.storage].filter(Boolean).length > 0 && (
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                          {[selected.processor, selected.ram, selected.storage].filter(Boolean).join(' · ')}
-                        </p>
+                          ))}
+                        </div>
                       )}
                     </div>
+                  )}
+                </div>
+              ) : (
+                /* ── Device sélectionné ── */
+                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
 
-                    {/* SN (lecture seule) */}
-                    <div className="space-y-1">
-                      <label className="text-xs text-[var(--text-secondary)]">N° de série</label>
-                      <input readOnly value={selected.serialNumber}
-                        className="input-glass py-2 text-sm w-full font-mono bg-white/[0.02] cursor-default" />
+                  {/* Carte appareil — confirmation visuelle */}
+                  <div className="rounded-xl px-4 py-3" style={{ border: '1px solid rgba(16,185,129,0.30)', background: 'rgba(16,185,129,0.06)' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400 mb-1">Appareil sélectionné</p>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{selected.brand} {selected.model}</p>
+                    {[selected.processor, selected.ram, selected.storage].filter(Boolean).length > 0 && (
+                      <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        {[selected.processor, selected.ram, selected.storage].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* SN (lecture seule) */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">N° de série</label>
+                    <input readOnly value={selected.serialNumber}
+                      className="input-glass py-2 text-sm w-full font-mono opacity-60 cursor-default" />
+                  </div>
+
+                  {/* IMEI phones uniquement */}
+                  {isPhone && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-[var(--text-secondary)]">IMEI</label>
+                      <input readOnly value={selected.imei ?? '—'}
+                        className="input-glass py-2 text-sm w-full font-mono tracking-widest opacity-60 cursor-default" />
                     </div>
+                  )}
 
-                    {/* IMEI phones uniquement */}
-                    {isPhone && (
-                      <div className="space-y-1">
-                        <label className="text-xs text-[var(--text-secondary)]">IMEI</label>
-                        <input readOnly value={selected.imei ?? '—'}
-                          className="input-glass py-2 text-sm w-full font-mono tracking-widest bg-white/[0.02] cursor-default" />
+                  {/* ── Champs workstation ───────────────── */}
+                  {isWS && (
+                    <>
+                      <div className="h-px" style={{ background: 'rgba(139,120,255,0.15)' }} />
+
+                      {/* Toggle Labo / Indus — LAB_WORKSTATION uniquement */}
+                      {isLab && (
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-[var(--text-secondary)]">Type de poste</label>
+                          <div className="toggle-glass">
+                            {(['LAB', 'INDUS'] as const).map((lt) => (
+                              <button
+                                key={lt}
+                                type="button"
+                                onClick={() => setLabType(lt)}
+                                className={`relative flex-1 py-2 text-xs font-medium transition-colors duration-150 ${
+                                  labType === lt
+                                    ? 'text-primary'
+                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                }`}
+                              >
+                                {labType === lt && (
+                                  <motion.div
+                                    className="absolute inset-0 rounded-[12px]"
+                                    layoutId="assign-labtype-pill"
+                                    style={{
+                                      background: 'rgba(99,102,241,0.13)',
+                                      backdropFilter: 'blur(12px)',
+                                      WebkitBackdropFilter: 'blur(12px)',
+                                      border: '1px solid rgba(99,102,241,0.22)',
+                                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
+                                    }}
+                                    transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                                  />
+                                )}
+                                <span className="relative z-10">{lt === 'LAB' ? 'Labo' : 'Indus'}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Site */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-[var(--text-secondary)]">Site <span className="text-red-400">*</span></label>
+                        <AppSelect
+                          value={site}
+                          onChange={(v) => setSite(v)}
+                          options={SITE_OPTIONS}
+                        />
                       </div>
-                    )}
 
-                    {/* ── Champs workstation ───────────────── */}
-                    {isWS && (
-                      <>
-                        <div className="h-px bg-[var(--border-glass)]" />
+                      {/* Hostname (auto-calculé, éditable) */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-[var(--text-secondary)]">Hostname</label>
+                        <input
+                          value={hostname}
+                          onChange={(e) => setHostname(e.target.value.toUpperCase())}
+                          placeholder="Auto-calculé…"
+                          className="input-glass py-2 text-sm w-full font-mono uppercase"
+                        />
+                        <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          {isLab
+                            ? `Format : ${LAB_COUNTRY[site] ?? 'FR'}${labType}${selected.serialNumber.trim().toUpperCase()}`
+                            : `Format : ${WS_PREFIX[site] ?? site}-W-${selected.serialNumber.trim().toUpperCase()}`
+                          }
+                        </p>
+                      </div>
 
-                        {/* Toggle Labo / Indus — LAB_WORKSTATION uniquement */}
-                        {isLab && (
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-[var(--text-secondary)]">Type de poste</label>
-                            <div className="toggle-glass">
-                              {(['LAB', 'INDUS'] as const).map((lt) => (
-                                <button
-                                  key={lt}
-                                  type="button"
-                                  onClick={() => setLabType(lt)}
-                                  className={`relative flex-1 py-2 text-xs font-medium transition-colors duration-150 ${
-                                    labType === lt
-                                      ? 'text-primary'
-                                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                                  }`}
-                                >
-                                  {labType === lt && (
-                                    <motion.div
-                                      className="absolute inset-0 rounded-[12px]"
-                                      layoutId="assign-labtype-pill"
-                                      style={{
-                                        background: 'rgba(99,102,241,0.13)',
-                                        backdropFilter: 'blur(12px)',
-                                        WebkitBackdropFilter: 'blur(12px)',
-                                        border: '1px solid rgba(99,102,241,0.22)',
-                                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
-                                      }}
-                                      transition={{ type: 'spring', stiffness: 500, damping: 38 }}
-                                    />
-                                  )}
-                                  <span className="relative z-10">{lt === 'LAB' ? 'Labo' : 'Indus'}</span>
-                                </button>
-                              ))}
-                            </div>
+                      {/* Champs réseau — LAB uniquement */}
+                      {isLab && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-[var(--text-secondary)]">VLAN</label>
+                            <input
+                              value={vlan}
+                              onChange={(e) => setVlan(e.target.value)}
+                              placeholder="Ex : VLAN-10"
+                              className="input-glass py-2 text-sm w-full"
+                            />
                           </div>
-                        )}
-
-                        {/* Site */}
-                        <div className="space-y-1">
-                          <label className="text-xs text-[var(--text-secondary)]">Site <span className="text-red-400">*</span></label>
-                          <AppSelect
-                            value={site}
-                            onChange={(v) => setSite(v)}
-                            options={SITE_OPTIONS}
-                          />
-                        </div>
-
-                        {/* Hostname (auto-calculé, éditable) */}
-                        <div className="space-y-1">
-                          <label className="text-xs text-[var(--text-secondary)]">Hostname</label>
-                          <input
-                            value={hostname}
-                            onChange={(e) => setHostname(e.target.value.toUpperCase())}
-                            placeholder="Auto-calculé…"
-                            className="input-glass py-2 text-sm w-full font-mono uppercase"
-                          />
-                          <p className="text-[10px] text-[var(--text-muted)]">
-                            {isLab
-                              ? `Format : ${LAB_COUNTRY[site] ?? 'FR'}${labType}${selected.serialNumber.trim().toUpperCase()}`
-                              : `Format : ${WS_PREFIX[site] ?? site}-W-${selected.serialNumber.trim().toUpperCase()}`
-                            }
-                          </p>
-                        </div>
-
-                        {/* Champs réseau — LAB uniquement */}
-                        {isLab && (
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <label className="text-xs text-[var(--text-secondary)]">VLAN</label>
-                              <input
-                                value={vlan}
-                                onChange={(e) => setVlan(e.target.value)}
-                                placeholder="Ex : VLAN-10"
-                                className="input-glass py-2 text-sm w-full"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-xs text-[var(--text-secondary)]">Adresse IP</label>
-                              <input
-                                value={ipAddress}
-                                onChange={(e) => setIpAddress(e.target.value)}
-                                placeholder="192.168.1.100"
-                                className="input-glass py-2 text-sm w-full font-mono"
-                              />
-                            </div>
-                            <div className="col-span-2 space-y-1">
-                              <label className="text-xs text-[var(--text-secondary)]">Adresse MAC</label>
-                              <input
-                                value={macAddress}
-                                onChange={(e) => setMacAddress(e.target.value.toUpperCase())}
-                                placeholder="AA:BB:CC:DD:EE:FF"
-                                className="input-glass py-2 text-sm w-full font-mono uppercase"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">Clé Bitlocker</label>
-                              <input
-                                value={bitlocker}
-                                onChange={(e) => setBitlocker(e.target.value.replace(/\D/g, ''))}
-                                placeholder="Clé de récupération (chiffres uniquement)"
-                                className="input-glass py-2 text-sm w-full font-mono"
-                                inputMode="numeric"
-                              />
-                            </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-[var(--text-secondary)]">Adresse IP</label>
+                            <input
+                              value={ipAddress}
+                              onChange={(e) => setIpAddress(e.target.value)}
+                              placeholder="192.168.1.100"
+                              className="input-glass py-2 text-sm w-full font-mono"
+                            />
                           </div>
-                        )}
-                      </>
-                    )}
+                          <div className="col-span-2 flex flex-col gap-1">
+                            <label className="text-xs font-medium text-[var(--text-secondary)]">Adresse MAC</label>
+                            <input
+                              value={macAddress}
+                              onChange={(e) => setMacAddress(e.target.value.toUpperCase())}
+                              placeholder="AA:BB:CC:DD:EE:FF"
+                              className="input-glass py-2 text-sm w-full font-mono uppercase"
+                            />
+                          </div>
+                          <div className="col-span-2 flex flex-col gap-1">
+                            <label className="text-xs font-medium text-[var(--text-secondary)]">Clé Bitlocker</label>
+                            <input
+                              value={bitlocker}
+                              onChange={(e) => setBitlocker(e.target.value.replace(/\D/g, ''))}
+                              placeholder="Clé de récupération (chiffres uniquement)"
+                              className="input-glass py-2 text-sm w-full font-mono"
+                              inputMode="numeric"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
 
-                    {/* N° ticket */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-[var(--text-secondary)]">
-                        N° ticket <span className="text-red-400">*</span>
-                      </label>
-                      <input
-                        value={ticketRef}
-                        onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
-                        placeholder="IT-XXXXX"
-                        className="input-glass py-2 text-sm w-full font-mono uppercase"
-                      />
-                    </div>
+                  {/* N° ticket */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">
+                      N° ticket <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      value={ticketRef}
+                      onChange={(e) => setTicketRef(e.target.value.toUpperCase())}
+                      placeholder="IT-XXXXX"
+                      className="input-glass py-2 text-sm w-full font-mono uppercase"
+                    />
+                  </div>
 
-                    <button
-                      onClick={handleReset}
-                      className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] underline transition-colors"
-                    >
-                      Changer d'appareil
-                    </button>
-                  </motion.div>
-                )}
-              </div>
-            </div>
+                  <button
+                    onClick={handleReset}
+                    className="text-xs transition-colors"
+                    style={{ color: 'var(--text-muted)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)'; }}
+                  >
+                    ← Changer d'appareil
+                  </button>
+                </motion.div>
+              )}
+            </section>
+          </div>
 
-            {/* Pied */}
-            <div className="flex gap-3 px-5 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
-              <button onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
-              <button
-                onClick={() => selected && assignMut.mutate(selected.id)}
-                disabled={!canSubmit}
-                className="btn-primary flex-1 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {assignMut.isPending && <Loader2 size={14} className="animate-spin" />}
-                Affecter
-              </button>
-            </div>
-          </motion.div>
-        </motion.div>
-      </>
-    </AnimatePresence>
+          {/* Pied */}
+          <div className="flex gap-3 px-5 py-4 flex-shrink-0 relative z-10" style={{ borderTop: '1px solid rgba(139,120,255,0.20)' }}>
+            <motion.button
+              onClick={onClose}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              className="btn-secondary flex-1 py-2.5 text-sm"
+            >
+              Annuler
+            </motion.button>
+            <motion.button
+              onClick={() => selected && assignMut.mutate(selected.id)}
+              disabled={!canSubmit}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="flex-1 py-2.5 text-[13px] rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{
+                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                border: '1px solid rgba(99,102,241,0.45)',
+                color: '#ffffff',
+                boxShadow: '0 4px 20px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.20)',
+              }}
+            >
+              {assignMut.isPending && <Loader2 size={14} className="animate-spin" />}
+              Affecter
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    </>,
+    document.body
   );
 }
 
@@ -620,10 +662,15 @@ export default function Devices() {
           </div>
 
           {canEdit && (
-            <button onClick={() => setAssignOpen(true)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+            <motion.button
+              onClick={() => setAssignOpen(true)}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="btn-primary flex items-center gap-2 px-4 py-2 text-sm"
+            >
               <Plus size={16} />
               Nouveau
-            </button>
+            </motion.button>
           )}
         </div>
       </div>
@@ -834,9 +881,14 @@ export default function Devices() {
 
                 {/* ── Boutons ── */}
                 <div className="flex gap-3 relative z-10">
-                  <button onClick={closePopup} className="btn-secondary flex-1 py-2.5 text-sm">
+                  <motion.button
+                    onClick={closePopup}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="btn-secondary flex-1 py-2.5 text-sm"
+                  >
                     Annuler
-                  </button>
+                  </motion.button>
                   <motion.button
                     onClick={handleDeleteConfirm}
                     disabled={deleteMut.isPending}

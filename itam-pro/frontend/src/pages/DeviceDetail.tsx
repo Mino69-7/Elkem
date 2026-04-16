@@ -578,15 +578,24 @@ function PhoneModal({
 
             {/* Pied */}
             <div className="flex gap-3 px-5 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
-              <button onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
-              <button
+              <motion.button
+                onClick={onClose}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                className="btn-secondary flex-1 py-2 text-sm"
+              >
+                Annuler
+              </motion.button>
+              <motion.button
                 onClick={() => isEdit ? updateMut.mutate() : selected && assignMut.mutate(selected.id)}
                 disabled={!canSubmit}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
                 className="btn-primary flex-1 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {(isEdit ? updateMut.isPending : assignMut.isPending) && <Loader2 size={14} className="animate-spin" />}
                 {isEdit ? 'Enregistrer' : 'Affecter'}
-              </button>
+              </motion.button>
             </div>
           </motion.div>
         </motion.div>
@@ -769,15 +778,24 @@ function WorkstationModal({
 
             {/* Pied */}
             <div className="flex gap-3 px-5 py-4 border-t border-[var(--border-glass)] flex-shrink-0">
-              <button onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
-              <button
+              <motion.button
+                onClick={onClose}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                className="btn-secondary flex-1 py-2 text-sm"
+              >
+                Annuler
+              </motion.button>
+              <motion.button
                 onClick={() => selected && assignMut.mutate(selected.id)}
                 disabled={!canSubmit}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
                 className="btn-primary flex-1 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {assignMut.isPending && <Loader2 size={14} className="animate-spin" />}
                 Affecter
-              </button>
+              </motion.button>
             </div>
           </motion.div>
         </motion.div>
@@ -1395,9 +1413,14 @@ function TabEquipements({ userId, canEdit }: { userId: string; canEdit: boolean;
 
                 {/* ── Actions ── */}
                 <div className="flex gap-3 relative z-10">
-                  <button onClick={closePopup} className="btn-secondary flex-1 py-2.5 text-sm">
+                  <motion.button
+                    onClick={closePopup}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="btn-secondary flex-1 py-2.5 text-sm"
+                  >
                     Annuler
-                  </button>
+                  </motion.button>
                   <motion.button
                     onClick={() => removeMut.mutate({
                       device: d,
@@ -1456,8 +1479,48 @@ export default function DeviceDetail() {
   const deleteMut = useDeleteDevice();
   const assignMut = useAssignDevice(id!);
 
+  const swapMut = useMutation({
+    mutationFn: async ({
+      oldId, newId, userId, assetTag, site, hostname, vlan, ipAddress, macAddress, bitlocker,
+    }: {
+      oldId: string; newId: string; userId: string;
+      assetTag: string; site: string; hostname: string;
+      vlan?: string; ipAddress?: string; macAddress?: string; bitlocker?: string;
+    }) => {
+      await api.delete(`/devices/${oldId}`, { data: { status: 'IN_STOCK' } });
+      await api.patch(`/devices/${newId}/assign`, { userId, assetTag });
+      await api.put(`/devices/${newId}`, { site, hostname, vlan, ipAddress, macAddress, bitlocker });
+    },
+    onSuccess: (_data, { oldId, newId }) => {
+      qcMain.invalidateQueries({ queryKey: ['device', oldId] });
+      qcMain.invalidateQueries({ queryKey: ['device', newId] });
+      qcMain.invalidateQueries({ queryKey: ['devices'] });
+      qcMain.invalidateQueries({ queryKey: ['stock-summary'] });
+      qcMain.invalidateQueries({ queryKey: ['stock-devices'] });
+      qcMain.invalidateQueries({ queryKey: ['stockalerts'] });
+      qcMain.invalidateQueries({ queryKey: ['maintenance-devices'] });
+    },
+  });
+
   const handleUpdate = async (data: DeviceFormData) => {
-    await updateMut.mutateAsync(data);
+    if (data.swappedDeviceId && device?.assignedUserId) {
+      await swapMut.mutateAsync({
+        oldId:      id!,
+        newId:      data.swappedDeviceId,
+        userId:     device.assignedUserId,
+        assetTag:   data.assetTag ?? '',
+        site:       data.site ?? 'SUD',
+        hostname:   data.hostname ?? '',
+        vlan:       data.vlan,
+        ipAddress:  data.ipAddress,
+        macAddress: data.macAddress,
+        bitlocker:  data.bitlocker,
+      });
+      // Naviguer vers le nouvel appareil (l'ancien est retourné au stock)
+      navigate(`/devices/${data.swappedDeviceId}`, { state: { from: location.state?.from ?? '/devices' } });
+    } else {
+      await updateMut.mutateAsync(data);
+    }
     setFormOpen(false);
   };
 
@@ -1516,9 +1579,22 @@ export default function DeviceDetail() {
       {/* ─── Navigation & titre ────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={goBack} className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors" aria-label="Retour">
+          <motion.button
+            onClick={goBack}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors duration-200"
+            style={{
+              background: 'var(--bg-glass)',
+              backdropFilter: 'var(--blur)',
+              WebkitBackdropFilter: 'var(--blur)',
+              border: '1px solid var(--border-glass)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), 0 2px 8px rgba(0,0,0,0.10)',
+            }}
+            aria-label="Retour"
+          >
             <ArrowLeft size={16} />
-          </button>
+          </motion.button>
           {backTo === '/devices' && device.assignedUser ? (
             <div>
               <h1 className="text-xl font-bold text-[var(--text-primary)]">{device.assignedUser.displayName}</h1>
@@ -1815,9 +1891,9 @@ export default function DeviceDetail() {
       {/* ─── Formulaire d'édition ────────────────────────────── */}
       {canEdit && (
         <DeviceForm
-          device={device}
+          device={formOpen ? device : null}
           isOpen={formOpen}
-          isSaving={updateMut.isPending}
+          isSaving={updateMut.isPending || swapMut.isPending}
           isManager={isManager}
           formTitle={`Modifier — ${device.assignedUser?.displayName ?? device.assetTag ?? device.serialNumber}`}
           onClose={() => setFormOpen(false)}
@@ -1871,19 +1947,23 @@ export default function DeviceDetail() {
               </div>
 
               <div className="flex gap-3">
-                <button
+                <motion.button
                   onClick={() => { setAssignOpen(false); setSelectedUser(''); setAssignSite('SUD'); }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
                   className="btn-secondary flex-1 py-2 text-sm"
                 >
                   Annuler
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={handleAssign}
                   disabled={!selectedUser || assignMut.isPending}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
                   className="btn-primary flex-1 py-2 text-sm disabled:opacity-50"
                 >
                   {assignMut.isPending ? 'En cours…' : 'Assigner'}
-                </button>
+                </motion.button>
               </div>
             </div>
           </motion.div>
@@ -1953,10 +2033,24 @@ export default function DeviceDetail() {
               </p>
 
               <div className="flex gap-3">
-                <button onClick={() => { setDeleting(false); setRetireStatus('IN_STOCK'); setRetireDeadline(''); }} className="btn-secondary flex-1 py-2 text-sm">Annuler</button>
-                <button onClick={handleDelete} disabled={deleteMut.isPending} className="flex-1 py-2 text-sm rounded-xl bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 transition-colors font-medium disabled:opacity-50">
+                <motion.button
+                  onClick={() => { setDeleting(false); setRetireStatus('IN_STOCK'); setRetireDeadline(''); }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="btn-secondary flex-1 py-2 text-sm"
+                >
+                  Annuler
+                </motion.button>
+                <motion.button
+                  onClick={handleDelete}
+                  disabled={deleteMut.isPending}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="flex-1 py-2 text-[13px] rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)', border: '1px solid rgba(245,158,11,0.45)', color: '#ffffff', boxShadow: '0 4px 20px rgba(245,158,11,0.35), inset 0 1px 0 rgba(255,255,255,0.20)' }}
+                >
                   {deleteMut.isPending ? 'En cours…' : 'Confirmer'}
-                </button>
+                </motion.button>
               </div>
             </div>
           </motion.div>

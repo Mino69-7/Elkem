@@ -58,7 +58,7 @@ export function FilterPill({ icon, label, value, options, onChange, disabled }: 
           position="popper"
           sideOffset={6}
           className={clsx(
-            'z-[200] min-w-[180px] max-h-64 overflow-hidden rounded-xl shadow-2xl',
+            'z-[210] min-w-[180px] max-h-64 overflow-hidden rounded-xl shadow-2xl',
             'border border-[var(--border-glass)]',
             'animate-in fade-in-0 zoom-in-95'
           )}

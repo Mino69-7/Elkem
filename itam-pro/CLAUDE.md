@@ -120,8 +120,9 @@ Un backdrop `rgba(0,0,0,0.60)` + `blur(12px)` sur le backdrop lui-même tue le g
 **Z-index stack popups**
 - Backdrop : `z-index: 150`
 - Card popup : `z-index: 151`
-- AppSelect dropdown (Radix UI, via `Select.Portal`) : `z-[200]` — toujours au-dessus du card
-- DeviceForm drawer : `z-index: 201`
+- DeviceForm backdrop : `z-index: 200`
+- DeviceForm drawer / modal : `z-index: 201`
+- AppSelect dropdown (Radix UI, via `Select.Portal`) : `z-[210]` — **doit être > 201** pour passer au-dessus du drawer
 - TopBar search portal : `z-index: 9999`
 
 **DeviceForm drawer — widget flottant arrondi**
@@ -1137,6 +1138,76 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 
 ---
 
+### ✅ Phase 23 — Design system complet liquid glass (2026-04-16)
+
+#### SN combobox en mode édition (DeviceForm.tsx)
+- Champ SN workstation en édition : plus grisé, affiche le SN actuel comme vraie valeur
+- `ChevronDown` visible permanent (rotate 180° quand ouvert), icône `X` uniquement quand `swappedDevice` sélectionné
+- Logique ternaire : `swappedDevice?.sn` → `snOpen ? snSearch` → `device?.serialNumber`
+- `onMouseDown e.preventDefault()` sur les résultats dropdown — empêche le `blur` de fermer avant le `click`
+- Timeout 150ms sur le `onBlur` pour laisser le `onMouseDown` se déclencher en premier
+- `snOpen` state resetté à `false` dans les deux branches du `useEffect([device, isOpen])`
+
+#### btn-primary et btn-secondary upgrades (index.css)
+- `.btn-primary` : gradient indigo `→ #4f46e5`, glow `rgba(99,102,241,0.35)`, specular inset, `:hover` scale(1.02), `:active` scale(0.97)
+- `.btn-secondary` : `background: var(--bg-glass)`, `backdrop-filter: var(--blur)`, `border: var(--border-glass)`, specular `inset 0 1px 0 rgba(255,255,255,0.12)`, `:hover` scale(1.02) + border indigo teintée, `:active` scale(0.97)
+
+#### motion.button + scale sur tous les boutons d'action
+- **Règle** : tout bouton d'action dans un formulaire, modale ou popup = `motion.button` avec `whileHover={{ scale: 1.02 }}` + `whileTap={{ scale: 0.97 }}`
+- Appliqué à : boutons "Annuler" dans DeviceForm, "+Nouveau" dans Devices.tsx, footer de AssignFromPoolModal, footer de PODetailDrawer, tous les modaux/popups de DeviceDetail (PhoneModal, WorkstationModal, popup assign, popup delete) et Orders.tsx
+- Bouton "Confirmer" suppression : amber gradient `linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)` + glow amber
+- "+Nouveau" : `whileHover={{ scale: 1.03 }}` (légèrement plus fort car bouton primaire de la page)
+
+#### AssignFromPoolModal redesign glass (Devices.tsx)
+- `createPortal` obligatoire (AppShell transform context)
+- `AnimatePresence` supprimé du composant — utiliser `{assignOpen && createPortal(...)}` conditionnel stable
+- Card : `.modal-glass max-w-lg`, 3 décorations specular, header/footer `borderColor: rgba(139,120,255,0.20)`
+- Section headers : `text-[10px] font-semibold uppercase tracking-widest text-primary`
+- Résultats dropdown : `bg-secondary` + `hover:bg-indigo-600/20`
+- Spring modal : `stiffness: 460, damping: 36, mass: 0.72`
+
+#### PODetailDrawer redesign glass (Orders.tsx)
+- `createPortal` obligatoire — même raison que les autres overlays
+- Drawer droit flottant : `right:16px, top:16px, bottom:16px, width:480px`, classe `.modal-glass`
+- 4 décorations : ligne specular top, reflet vertical gauche, orbe indigo haut-droite, orbe cyan bas-gauche
+- Header + device list : séparateurs `rgba(139,120,255,0.15)`, hover indigo via `onMouseEnter/Leave`
+- Spring drawer : `stiffness: 420, damping: 40, mass: 0.85`
+- `import { createPortal } from 'react-dom'` ajouté à Orders.tsx ; `ArrowRight` + `DEVICE_STATUS_LABELS` supprimés (inutilisés)
+
+#### Toggle/tab bar glass (liquid-glass.css)
+- `.toggle-glass` et `.tabs-glass` : `border: 1px solid var(--table-border)` → `var(--border-glass)` (bordure blanche translucide, identique à `btn-secondary`)
+- Specular : `inset 0 1.5px 0 rgba(255,255,255,0.65)` → `inset 0 1px 0 rgba(255,255,255,0.12)` (même valeur que `btn-secondary`)
+- `border-top-color` override supprimé de `.tabs-glass` (redondant avec `var(--border-glass)`)
+- Dark mode : overrides `border-color` supprimés des deux classes — `var(--border-glass)` gère les deux thèmes via ses variables CSS
+- Specular dark mode : `rgba(255,255,255,0.09)` → `rgba(255,255,255,0.12)` — aligné sur `btn-secondary`
+- La pill animée (Framer Motion `layoutId`) est inchangée dans tous les cas
+
+#### Bouton retour et bouton collapse sidebar (DeviceDetail.tsx + Sidebar.tsx)
+- `<button>` → `<motion.button>` avec `whileHover={{ scale: 1.05 }}` + `whileTap={{ scale: 0.95 }}`
+- Style glass permanent (visible sans hover) :
+  ```jsx
+  style={{
+    background: 'var(--bg-glass)',
+    backdropFilter: 'var(--blur)',         // ← obligatoire, inclut brightness(1.04)
+    WebkitBackdropFilter: 'var(--blur)',
+    border: '1px solid var(--border-glass)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), 0 2px 8px rgba(0,0,0,0.10)',
+  }}
+  ```
+- **Specular 0.20 (pas 0.12)** sur les petits boutons icône (≤32px) — compense la taille réduite
+- Appliqué à : bouton `ArrowLeft` retour dans DeviceDetail, bouton `ChevronLeft/Right` collapse sidebar desktop, bouton `X` close sidebar mobile
+
+#### Règles CSS liquid glass consolidées
+- **`backdropFilter: 'var(--blur)'`** — TOUJOURS utiliser la variable CSS, jamais les valeurs hardcodées `blur(20px) saturate(1.8)`. Le `var(--blur)` inclut `brightness(1.04)` en light (effet verre éclairé) et `brightness(0.95)` en dark. Sans ce `brightness`, l'effet glass est terne.
+- **Specular par taille** : bouton large (btn-secondary, modaux) = `0.12` ; bouton icône compact (≤32px) = `0.20`
+- **Backdrop des modaux** : `rgba(0,0,10,0.42)` + `backdropFilter: blur(4px)` — laisser les couleurs de la page traverser pour que le `backdrop-filter` du `.modal-glass` ait quelque chose de coloré à flouter
+- **Variables CSS actives** :
+  - `--bg-glass` = `var(--glass-bg)` (liquid-glass.css override sur index.css) : `rgba(255,255,255,0.28)` light / `rgba(5,5,18,0.36)` dark
+  - `--border-glass` = `var(--glass-border)` : `rgba(255,255,255,0.65)` light / `rgba(255,255,255,0.13)` dark
+  - `--blur` = `blur(20px) saturate(1.8) brightness(1.04)` light / `blur(22px) saturate(1.5) brightness(0.95)` dark
+
+---
+
 ## En attente
 
 - ⏳ App Registration Azure Entra ID (action admin IT Elkem requise)
@@ -1144,4 +1215,3 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 - ⏳ Page Login : bouton Microsoft uniquement en mode SSO
 - ⏳ PWA polish (service worker, manifest, icônes complètes)
 - ⏳ Page Dashboard — révision finale
-- ⏳ Étendre le redesign liquid glass aux autres drawers/modaux du site (DeviceDetail modal d'assignation, etc.)

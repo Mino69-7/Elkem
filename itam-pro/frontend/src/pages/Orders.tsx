@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -8,7 +9,7 @@ import {
   X, Save, Package, Bell, Pencil, Trash2, Check, History, User,
   Laptop, Monitor, Smartphone, Tablet, Printer,
   Keyboard, Mouse, Headphones, Layers, HelpCircle, GripVertical,
-  Tv, Server, Search, ChevronRight, ArrowRight,
+  Tv, Server, Search, ChevronRight,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -19,7 +20,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
 import { usePurchaseOrders, useOrderHistory, useCreateOrder, useCancelOrder, useReceiveDevice } from '../hooks/usePurchaseOrders';
-import { DEVICE_TYPE_LABELS, DEVICE_STATUS_LABELS, KEYBOARD_LAYOUT_LABELS, formatDate } from '../utils/formatters';
+import { DEVICE_TYPE_LABELS, KEYBOARD_LAYOUT_LABELS, formatDate } from '../utils/formatters';
 import type { Device, DeviceModel, DeviceType, PurchaseOrder, POStatus } from '../types';
 import type { POFormData, ReceiveDeviceData } from '../services/purchaseOrder.service';
 
@@ -1146,61 +1147,93 @@ function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fro
 
   const Icon = TYPE_ICONS[order.deviceModel.type] ?? HelpCircle;
 
-  return (
+  return createPortal(
     <>
-      {/* Backdrop */}
+      {/* Backdrop léger — même style que DeviceForm */}
       <motion.div
-        className="fixed inset-0 z-50 bg-black/60"
+        key="po-backdrop"
+        style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,10,0.42)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', cursor: 'pointer' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        transition={{ duration: 0.20 }}
         onClick={onClose}
       />
-      {/* Panel latéral */}
+
+      {/* Drawer flottant arrondi — même patron que DeviceForm */}
       <motion.div
-        className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg flex flex-col overflow-hidden"
-        style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation))', borderLeft: '1px solid var(--glass-border)' }}
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'spring', stiffness: 400, damping: 40 }}
+        key="po-drawer"
+        className="modal-glass flex flex-col pointer-events-auto"
+        style={{
+          position: 'fixed',
+          right: '16px',
+          top: '16px',
+          bottom: '16px',
+          width: '480px',
+          maxWidth: 'calc(100vw - 32px)',
+          zIndex: 201,
+        }}
+        initial={{ x: 'calc(100% + 24px)', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 'calc(100% + 24px)', opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 40, mass: 0.85 }}
+        onClick={(e) => e.stopPropagation()}
       >
+        {/* ── Décorations liquid glass ── */}
+        {/* Ligne specular supérieure */}
+        <div className="absolute inset-x-0 top-0 h-[2px] pointer-events-none flex-shrink-0" style={{ borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', background: 'linear-gradient(90deg, transparent 5%, rgba(180,160,255,0.80) 30%, rgba(99,200,255,0.65) 70%, transparent 95%)' }} />
+        {/* Reflet vertical gauche */}
+        <div className="absolute top-0 left-0 pointer-events-none" style={{ width: '2px', height: '45%', background: 'linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)' }} />
+        {/* Orbe indigo haut-droite */}
+        <div className="absolute pointer-events-none" style={{ top: '-50px', right: '-40px', width: '200px', height: '200px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.25) 0%, rgba(6,182,212,0.08) 45%, transparent 68%)', filter: 'blur(10px)' }} />
+        {/* Orbe subtil bas-gauche */}
+        <div className="absolute pointer-events-none" style={{ bottom: '-30px', left: '-30px', width: '140px', height: '140px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)', filter: 'blur(8px)' }} />
+
         {/* Header */}
-        <div className="flex items-start gap-3 px-5 py-4 border-b border-[var(--border-glass)] flex-shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <div className="flex items-start gap-3 px-5 py-4 flex-shrink-0 relative z-10" style={{ borderBottom: '1px solid rgba(139,120,255,0.20)' }}>
+          {/* Icône type */}
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+            style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.20)' }}
+          >
             <Icon size={16} className="text-primary" />
           </div>
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">{order.reference}</span>
+              <span className="font-mono text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{order.reference}</span>
               <POStatusBadge status={order.status} />
             </div>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {order.deviceModel.brand} {order.deviceModel.name}
               <span className="ml-2">— {DEVICE_TYPE_LABELS[order.deviceModel.type]}</span>
             </p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
               {order.receivedCount} / {order.quantity} appareil{order.quantity > 1 ? 's' : ''} reçu{order.receivedCount > 1 ? 's' : ''}
             </p>
           </div>
+
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors flex-shrink-0"
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-150"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
           >
-            <X size={16} />
+            <X size={15} style={{ color: 'var(--text-muted)' }} />
           </button>
         </div>
 
         {/* Liste des appareils */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4 relative z-10">
           {devices.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Package size={32} className="text-[var(--text-muted)] opacity-30 mb-3" />
-              <p className="text-sm text-[var(--text-muted)]">Aucun appareil réceptionné</p>
+              <Package size={32} className="mb-3" style={{ color: 'var(--text-muted)', opacity: 0.30 }} />
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Aucun appareil réceptionné</p>
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-3">
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
                 Appareils réceptionnés ({devices.length})
               </p>
               {devices.map((device, i) => {
@@ -1213,27 +1246,40 @@ function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fro
                     transition={{ delay: i * 0.02 }}
                     onClick={() => isNavigable && handleDeviceClick(device)}
                     className={clsx(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[var(--border-glass)] transition-colors',
+                      'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150',
                       isNavigable
-                        ? 'cursor-pointer hover:bg-white/[0.04] hover:border-primary/20'
+                        ? 'cursor-pointer'
                         : 'opacity-50 cursor-default'
                     )}
+                    style={{
+                      border: '1px solid rgba(139,120,255,0.15)',
+                      background: 'rgba(255,255,255,0.02)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (isNavigable) {
+                        (e.currentTarget as HTMLDivElement).style.background = 'rgba(99,102,241,0.08)';
+                        (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(99,102,241,0.30)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.02)';
+                      (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(139,120,255,0.15)';
+                    }}
                   >
                     {/* SN + Tag */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-semibold text-[var(--text-primary)] truncate">
+                        <span className="font-mono text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
                           {device.serialNumber}
                         </span>
                         {device.assetTag && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-mono whitespace-nowrap">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-mono whitespace-nowrap" style={{ background: 'rgba(99,102,241,0.15)', color: 'rgb(129,140,248)' }}>
                             {device.assetTag}
                           </span>
                         )}
                       </div>
-                      {/* Utilisateur assigné */}
                       {device.assignedUser && (
-                        <div className="flex items-center gap-1 mt-0.5 text-[10px] text-[var(--text-muted)]">
+                        <div className="flex items-center gap-1 mt-0.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
                           <User size={9} />
                           <span className="truncate">{device.assignedUser.displayName}</span>
                         </div>
@@ -1243,7 +1289,7 @@ function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fro
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <StatusBadge status={device.status} />
                       {isNavigable && (
-                        <ChevronRight size={14} className="text-[var(--text-muted)]" />
+                        <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
                       )}
                     </div>
                   </motion.div>
@@ -1253,7 +1299,8 @@ function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fro
           )}
         </div>
       </motion.div>
-    </>
+    </>,
+    document.body
   );
 }
 

@@ -111,21 +111,39 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
 
           {/* Bouton fermer / collapse */}
           {mobile ? (
-            <button
+            <motion.button
               onClick={onClose}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/8 transition-colors flex-shrink-0"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors duration-200 flex-shrink-0"
+              style={{
+                background: 'var(--bg-glass)',
+                backdropFilter: 'var(--blur)',
+                WebkitBackdropFilter: 'var(--blur)',
+                border: '1px solid var(--border-glass)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), 0 2px 8px rgba(0,0,0,0.10)',
+              }}
               aria-label="Fermer le menu"
             >
               <X size={16} />
-            </button>
+            </motion.button>
           ) : (
-            <button
+            <motion.button
               onClick={toggleSidebarCollapse}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/8 transition-colors flex-shrink-0"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors duration-200 flex-shrink-0"
+              style={{
+                background: 'var(--bg-glass)',
+                backdropFilter: 'var(--blur)',
+                WebkitBackdropFilter: 'var(--blur)',
+                border: '1px solid var(--border-glass)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), 0 2px 8px rgba(0,0,0,0.10)',
+              }}
               aria-label={collapsed ? 'Agrandir la sidebar' : 'Réduire la sidebar'}
             >
               {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-            </button>
+            </motion.button>
           )}
         </div>
 

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2, RefreshCw, CheckCircle, AlertTriangle, Shield, ShieldOff } from 'lucide-react';
+import { X, Loader2, RefreshCw, CheckCircle, AlertTriangle, ChevronDown } from 'lucide-react';
 import { AppSelect } from '../ui/AppSelect';
 import { UserCombobox } from '../ui/UserCombobox';
 import type { Device, DeviceModel } from '../../types';
@@ -19,16 +19,6 @@ const KEYBOARD_FORM_OPTIONS = [
   'AZERTY_FR','QWERTY_ES','QWERTY_IT','QWERTZ_DE',
   'QWERTY_NO','QWERTY_UK','QWERTY_RU','QWERTY_TR','QWERTY_AR',
 ] as const;
-
-const STATUS_OPTIONS = [
-  { value: 'ASSIGNED',       label: 'Actif' },
-  { value: 'IN_STOCK',       label: 'Stock' },
-  { value: 'IN_MAINTENANCE', label: 'Maintenance' },
-  { value: 'PENDING_RETURN', label: 'À récupérer' },
-  { value: 'LOST',           label: 'Perdu' },
-  { value: 'STOLEN',         label: 'Volé' },
-  { value: 'RETIRED',        label: 'Rétention' },
-];
 
 // Types affichés dans le formulaire (hors périphériques purs)
 const FORM_TYPE_KEYS = [
@@ -85,7 +75,6 @@ const schema = z.object({
   screenSize:      z.string().optional(),
   keyboardLayout:  z.string().default('AZERTY_FR'),
   site:            z.string().default('SUD'),
-  status:          z.string().default('IN_STOCK'),
   notes:           z.string().optional(),
   purchaseOrderId: z.string().optional(),
 });
@@ -144,25 +133,24 @@ export default function DeviceForm({
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   const [pendingModelSearch, setPendingModelSearch] = useState<{ brand: string; model: string } | null>(null);
 
-  // Pool search pour le swap de PC en mode édition
+  // Pool search pour le swap en mode édition
   const [snSearch,      setSnSearch]      = useState('');
-  const [snResults,     setSnResults]     = useState<Array<{ id: string; serialNumber: string; brand: string; model: string }>>([]);
+  const [snResults,     setSnResults]     = useState<Array<{ id: string; serialNumber: string; brand: string; model: string; modelId?: string }>>([]);
   const [snLoading,     setSnLoading]     = useState(false);
   const [swappedDevice, setSwappedDevice] = useState<{ id: string; sn: string } | null>(null);
-  const [showSnSearch,  setShowSnSearch]  = useState(false);
+  const [snOpen,        setSnOpen]        = useState(false);
 
   const {
     control, register, handleSubmit, reset, watch, setValue, setError,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { keyboardLayout: 'AZERTY_FR', status: 'IN_STOCK', site: 'SUD', assignedUserId: '' },
+    defaultValues: { keyboardLayout: 'AZERTY_FR', site: 'SUD', assignedUserId: '' },
   });
 
   const selectedType = watch('type');
   const serialNumber = watch('serialNumber');
   const siteVal      = watch('site');
-  const bitlockerVal = watch('bitlocker');
 
   const isWorkstation = WORKSTATION_TYPES.includes(selectedType);
   const isLab         = selectedType === LAB_TYPE;
@@ -185,7 +173,7 @@ export default function DeviceForm({
     enabled: isOpen,
   });
 
-  const modelOptions = models.map((m) => ({ value: m.id, label: m.name }));
+  const modelOptions = models.map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` }));
 
   // ── Applique le modèle après rechargement de la liste ────
   useEffect(() => {
@@ -232,7 +220,6 @@ export default function DeviceForm({
         screenSize:      device.screenSize ?? '',
         keyboardLayout:  device.keyboardLayout ?? 'AZERTY_FR',
         site:            device.site ?? 'SUD',
-        status:          device.status ?? 'IN_STOCK',
         notes:           device.notes ?? '',
         purchaseOrderId: device.purchaseOrderId ?? '',
       });
@@ -241,17 +228,33 @@ export default function DeviceForm({
           ? `${device.assignedUser.displayName} (${device.assignedUser.email})`
           : undefined
       );
-      // Résolution du modèle : FK directe en priorité, sinon recherche par marque+nom
+      // Résolution du modèle : FK directe en priorité, sinon recherche par marque+nom.
+      // Cas cache chaud : si les modèles sont déjà chargés (même référence → effet [models]
+      // ne se re-déclenche pas), on tente un setValue immédiat ici.
       if (device.modelId) {
-        setPendingModelId(device.modelId);   // Priorité 1 dans l'effet ci-dessous
+        const cached = models.find((m) => m.id === device.modelId);
+        if (cached) {
+          // Modèles déjà en mémoire → appliquer immédiatement
+          setValue('modelId', device.modelId);
+          onModelChange(device.modelId);
+          setPendingModelId(null);
+        } else {
+          // Modèles pas encore chargés → l'effet [models, pendingModelId] les rattrapera
+          setPendingModelId(device.modelId);
+        }
         setPendingModelSearch(null);
       } else {
+        setPendingModelId(null);
         setPendingModelSearch({ brand: device.brand, model: device.model });
       }
+      // Reset pool search
+      setSnSearch('');
+      setSnResults([]);
+      setSwappedDevice(null);
+      setSnOpen(false);
     } else {
       reset({
         keyboardLayout:  'AZERTY_FR',
-        status:          (requireUser || forcedUserId) ? 'ASSIGNED' : 'IN_STOCK',
         site:            'SUD',
         assignedUserId:  '',
         bitlocker:       '',
@@ -261,6 +264,10 @@ export default function DeviceForm({
       setAssignedUserDisplay(undefined);
       setPendingModelId(null);
       setPendingModelSearch(null);
+      setSnSearch('');
+      setSnResults([]);
+      setSwappedDevice(null);
+      setSnOpen(false);
     }
     setSyncState('idle');
   }, [device, isOpen]); // eslint-disable-line
@@ -277,7 +284,7 @@ export default function DeviceForm({
 
   // ── Recherche pool stock pour swap SN en édition ─────────
   useEffect(() => {
-    if (!isEdit || !hasHostname || !showSnSearch || snSearch.length < 1) {
+    if (!isEdit || snSearch.length < 1) {
       setSnResults([]);
       return;
     }
@@ -295,7 +302,7 @@ export default function DeviceForm({
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [snSearch, isEdit, hasHostname, showSnSearch]); // eslint-disable-line
+  }, [snSearch, isEdit]); // eslint-disable-line
 
   // ── Sync numéro de série ──────────────────────────────────
   const handleSync = async () => {
@@ -371,7 +378,6 @@ export default function DeviceForm({
       assetTag:        values.assetTag?.trim() || '',
       serialNumber:    values.serialNumber?.trim() ?? '',
       site:            values.site,
-      status:          values.status,
       type:            values.type,
       brand:           model?.brand ?? device?.brand ?? 'Dell',
       model:           model?.name ?? device?.model ?? '',
@@ -453,131 +459,111 @@ export default function DeviceForm({
             </section>
           )}
 
-          {/* ── 2. Matériel — Type & Modèle ── */}
-          <section>
-            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Matériel</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Type" error={errors.type?.message} required>
-                <Controller control={control} name="type" render={({ field }) => (
-                  <AppSelect
-                    value={field.value ?? ''}
-                    onChange={(v) => { field.onChange(v); setValue('modelId', ''); }}
-                    options={TYPE_OPTIONS}
-                    placeholder="Type…"
-                    error={!!errors.type}
-                  />
-                )} />
-              </Field>
-
-              <Field label="Modèle" error={errors.modelId?.message} required>
-                <Controller control={control} name="modelId" render={({ field }) => (
-                  <AppSelect
-                    value={field.value ?? ''}
-                    onChange={(v) => { field.onChange(v); onModelChange(v); }}
-                    options={modelOptions}
-                    placeholder={selectedType ? (modelOptions.length ? 'Modèle…' : 'Aucun modèle') : "Choisir un type d'abord"}
-                    disabled={!selectedType || modelOptions.length === 0}
-                    error={!!errors.modelId}
-                  />
-                )} />
-              </Field>
-            </div>
-          </section>
-
-          {/* ── 3. Identification (conditionnel selon le type) ── */}
-          {selectedType && (
+          {/* ── 2. Identification (conditionnel selon le type) ── */}
+          {(isEdit || selectedType) && (
             <section>
               <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Identification</h3>
               <div className="grid grid-cols-2 gap-3">
 
                 <Field label="N° de série" error={errors.serialNumber?.message} required>
-                  {isEdit && hasHostname ? (
-                    /* ── Edit workstation : pool search pour swap ── */
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--border-glass)] bg-white/[0.02]">
-                        <span className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate">
-                          {swappedDevice ? swappedDevice.sn : (device?.serialNumber ?? '—')}
-                        </span>
-                        {swappedDevice && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSwappedDevice(null);
-                              setShowSnSearch(false);
-                              setSnSearch('');
-                              setSnResults([]);
-                              setValue('serialNumber', device!.serialNumber);
-                              setValue('hostname', device!.hostname ?? '');
-                            }}
-                            className="text-[var(--text-muted)] hover:text-red-400 transition-colors flex-shrink-0"
-                          >
-                            <X size={12} />
-                          </button>
-                        )}
+                  {isEdit ? (
+                    /* ── Edit : combobox pool stock (style select + recherche) ── */
+                    <div className="relative">
+                      <input
+                        value={
+                          swappedDevice ? swappedDevice.sn
+                          : snOpen       ? snSearch
+                          :                (device?.serialNumber ?? '')
+                        }
+                        readOnly={!!swappedDevice}
+                        onFocus={() => {
+                          if (!swappedDevice) {
+                            setSnOpen(true);
+                            setSnSearch('');
+                          }
+                        }}
+                        onBlur={() => {
+                          // Délai pour laisser le mouseDown du résultat se déclencher d'abord
+                          setTimeout(() => {
+                            setSnOpen(false);
+                            setSnSearch('');
+                          }, 150);
+                        }}
+                        onChange={(e) => {
+                          if (!swappedDevice && snOpen) setSnSearch(e.target.value);
+                        }}
+                        placeholder={snOpen ? 'Rechercher un SN…' : undefined}
+                        className={`input-glass py-2 text-sm w-full font-mono pr-8${swappedDevice ? ' text-indigo-400 cursor-default' : snOpen ? ' cursor-text' : ' cursor-pointer'}`}
+                      />
+                      {/* Icône droite */}
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                        {snLoading
+                          ? <Loader2 size={12} className="animate-spin text-[var(--text-muted)]" />
+                          : swappedDevice
+                            ? null
+                            : <ChevronDown size={12} className={`text-[var(--text-muted)] transition-transform duration-200${snOpen ? ' rotate-180' : ''}`} />
+                        }
                       </div>
-                      {!swappedDevice && !showSnSearch && (
+                      {/* Bouton X pour annuler le swap — pointer-events réactif */}
+                      {swappedDevice && (
                         <button
                           type="button"
-                          onClick={() => setShowSnSearch(true)}
-                          className="text-[10px] text-[var(--text-muted)] hover:text-primary transition-colors"
+                          title="Revenir au SN d'origine"
+                          onClick={() => {
+                            setSwappedDevice(null);
+                            setSnSearch('');
+                            setSnResults([]);
+                            setSnOpen(false);
+                            setValue('serialNumber', device!.serialNumber);
+                            if (hasHostname) setValue('hostname', device!.hostname ?? '');
+                            setValue('modelId', device!.modelId ?? '');
+                          }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-red-400 transition-colors"
                         >
-                          Changer de PC
+                          <X size={13} />
                         </button>
                       )}
-                      {showSnSearch && !swappedDevice && (
-                        <div className="relative">
-                          <div className="relative">
-                            <input
-                              value={snSearch}
-                              onChange={(e) => setSnSearch(e.target.value)}
-                              placeholder="Rechercher un SN dans le pool..."
-                              className="input-glass py-2 text-sm w-full pr-7"
-                              autoFocus
-                            />
-                            {snLoading && (
-                              <Loader2 size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-[var(--text-muted)]" />
-                            )}
-                          </div>
-                          {snResults.length > 0 && (
-                            <div
-                              className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--glass-border)] overflow-hidden shadow-xl max-h-44 overflow-y-auto"
-                              style={{ background: 'var(--surface-primary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
-                            >
+
+                      {/* Dropdown résultats */}
+                      {snOpen && !swappedDevice && (snResults.length > 0 || (snSearch.length >= 1 && !snLoading)) && (
+                        <div
+                          className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--border-glass)] overflow-hidden shadow-xl"
+                          style={{ background: 'var(--bg-secondary)', backdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))', WebkitBackdropFilter: 'blur(var(--glass-blur)) saturate(var(--glass-saturation))' }}
+                        >
+                          {snResults.length > 0 ? (
+                            <div className="max-h-48 overflow-y-auto p-1">
                               {snResults.map((r) => (
                                 <button
                                   key={r.id}
                                   type="button"
-                                  onClick={() => {
+                                  onMouseDown={(e) => {
+                                    // Empêche le blur de fermer le dropdown avant le click
+                                    e.preventDefault();
                                     setSwappedDevice({ id: r.id, sn: r.serialNumber });
                                     setValue('serialNumber', r.serialNumber);
-                                    if (siteVal) setValue('hostname', computeHostname(r.serialNumber, siteVal));
-                                    setShowSnSearch(false);
+                                    if (hasHostname && siteVal) setValue('hostname', computeHostname(r.serialNumber, siteVal));
+                                    if (r.modelId) setValue('modelId', r.modelId);
                                     setSnSearch('');
                                     setSnResults([]);
+                                    setSnOpen(false);
                                   }}
-                                  className="w-full px-3 py-2 text-left text-sm hover:bg-white/5 transition-colors flex items-center justify-between gap-4"
+                                  className="w-full px-3 py-2.5 rounded-lg text-left hover:bg-indigo-600/20 transition-colors flex items-center justify-between gap-3"
                                 >
-                                  <span className="font-mono text-[var(--text-primary)]">{r.serialNumber}</span>
+                                  <span className="text-sm font-mono text-[var(--text-primary)] truncate">{r.serialNumber}</span>
                                   <span className="text-[10px] text-[var(--text-muted)] shrink-0">{r.brand} {r.model}</span>
                                 </button>
                               ))}
                             </div>
+                          ) : (
+                            <div className="px-3 py-2.5 text-[11px] text-[var(--text-muted)]">
+                              Aucun appareil disponible dans le stock pour ce type
+                            </div>
                           )}
-                          {snSearch.length >= 1 && snResults.length === 0 && !snLoading && (
-                            <p className="mt-1 text-[10px] text-[var(--text-muted)]">Aucun PC disponible dans le pool</p>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => { setShowSnSearch(false); setSnSearch(''); setSnResults([]); }}
-                            className="mt-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                          >
-                            Annuler
-                          </button>
                         </div>
                       )}
                     </div>
                   ) : (
-                    /* ── Création ou périphérique non-WS ── */
+                    /* ── Création ── */
                     <>
                       <input
                         {...register('serialNumber', {
@@ -588,33 +574,28 @@ export default function DeviceForm({
                           },
                         })}
                         placeholder="Ex : ABC1234"
-                        readOnly={isEdit}
-                        className={`input-glass py-2 text-sm font-mono${isEdit ? ' opacity-60 cursor-not-allowed' : ''}`}
+                        className="input-glass py-2 text-sm font-mono"
                       />
-                      {!isEdit && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={handleSync}
-                            disabled={syncState === 'loading' || !serialNumber?.trim()}
-                            className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] hover:text-primary transition-colors disabled:opacity-40"
-                          >
-                            {syncState === 'loading'
-                              ? <Loader2 size={11} className="animate-spin" />
-                              : <RefreshCw size={11} />}
-                            Sync
-                          </button>
-                          {syncState !== 'idle' && syncState !== 'loading' && (
-                            <p className={`text-[10px] flex items-center gap-1 ${
-                              syncState === 'duplicate' ? 'text-amber-400' :
-                              syncState === 'found'     ? 'text-emerald-400' : 'text-[var(--text-muted)]'
-                            }`}>
-                              {syncState === 'duplicate' && <AlertTriangle size={10} />}
-                              {syncState === 'found'     && <CheckCircle size={10} />}
-                              {syncMessage}
-                            </p>
-                          )}
-                        </>
+                      <button
+                        type="button"
+                        onClick={handleSync}
+                        disabled={syncState === 'loading' || !serialNumber?.trim()}
+                        className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] hover:text-primary transition-colors disabled:opacity-40"
+                      >
+                        {syncState === 'loading'
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : <RefreshCw size={11} />}
+                        Sync
+                      </button>
+                      {syncState !== 'idle' && syncState !== 'loading' && (
+                        <p className={`text-[10px] flex items-center gap-1 ${
+                          syncState === 'duplicate' ? 'text-amber-400' :
+                          syncState === 'found'     ? 'text-emerald-400' : 'text-[var(--text-muted)]'
+                        }`}>
+                          {syncState === 'duplicate' && <AlertTriangle size={10} />}
+                          {syncState === 'found'     && <CheckCircle size={10} />}
+                          {syncMessage}
+                        </p>
                       )}
                     </>
                   )}
@@ -671,6 +652,55 @@ export default function DeviceForm({
             </section>
           )}
 
+          {/* ── 3. Matériel — Type & Modèle ── */}
+          <section>
+            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Matériel</h3>
+            {isEdit ? (
+              /* En édition : lecture seule grisée — non modifiable */
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-[var(--text-secondary)]">Type</label>
+                  <div className="input-glass py-2 px-3 text-sm opacity-60 cursor-not-allowed select-none truncate">
+                    {DEVICE_TYPE_LABELS[selectedType] ?? selectedType ?? '—'}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-[var(--text-secondary)]">Modèle</label>
+                  <div className="input-glass py-2 px-3 text-sm opacity-60 cursor-not-allowed select-none truncate">
+                    {modelOptions.find((m) => m.value === watch('modelId'))?.label ?? device?.model ?? '—'}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* En création : dropdowns actifs */
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Type" error={errors.type?.message} required>
+                  <Controller control={control} name="type" render={({ field }) => (
+                    <AppSelect
+                      value={field.value ?? ''}
+                      onChange={(v) => { field.onChange(v); setValue('modelId', ''); }}
+                      options={TYPE_OPTIONS}
+                      placeholder="Type…"
+                      error={!!errors.type}
+                    />
+                  )} />
+                </Field>
+                <Field label="Modèle" error={errors.modelId?.message} required>
+                  <Controller control={control} name="modelId" render={({ field }) => (
+                    <AppSelect
+                      value={field.value ?? ''}
+                      onChange={(v) => { field.onChange(v); onModelChange(v); }}
+                      options={modelOptions}
+                      placeholder={selectedType ? (modelOptions.length ? 'Modèle…' : 'Aucun modèle') : "Choisir un type d'abord"}
+                      disabled={!selectedType || modelOptions.length === 0}
+                      error={!!errors.modelId}
+                    />
+                  )} />
+                </Field>
+              </div>
+            )}
+          </section>
+
           {/* ── 4. Spécifications — création uniquement (gérées par le catalogue en édition) ── */}
           {!isEdit && selectedType && (HAS_SPECS.includes(selectedType) || HAS_KEYBOARD_LAYOUT.includes(selectedType)) && (
             <section>
@@ -709,31 +739,24 @@ export default function DeviceForm({
             </section>
           )}
 
-          {/* ── 5. Statut & Localisation ── */}
+          {/* ── 5. Localisation ── */}
           <section>
-            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Statut & Localisation</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Site" error={errors.site?.message} required>
-                <Controller control={control} name="site" render={({ field }) => (
-                  <AppSelect
-                    value={field.value ?? 'SUD'}
-                    onChange={(v) => {
-                      field.onChange(v);
-                      if (hasHostname && serialNumber?.trim()) {
-                        setValue('hostname', computeHostname(serialNumber, v));
-                      }
-                    }}
-                    options={SITE_OPTIONS}
-                    error={!!errors.site}
-                  />
-                )} />
-              </Field>
-              <Field label="Statut" error={errors.status?.message} required>
-                <Controller control={control} name="status" render={({ field }) => (
-                  <AppSelect value={field.value ?? 'IN_STOCK'} onChange={field.onChange} options={STATUS_OPTIONS} error={!!errors.status} />
-                )} />
-              </Field>
-            </div>
+            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-3">Localisation</h3>
+            <Field label="Site" error={errors.site?.message} required>
+              <Controller control={control} name="site" render={({ field }) => (
+                <AppSelect
+                  value={field.value ?? 'SUD'}
+                  onChange={(v) => {
+                    field.onChange(v);
+                    if (hasHostname && serialNumber?.trim()) {
+                      setValue('hostname', computeHostname(serialNumber, v));
+                    }
+                  }}
+                  options={SITE_OPTIONS}
+                  error={!!errors.site}
+                />
+              )} />
+            </Field>
           </section>
 
           {/* ── 6. N° commande (lecture seule si PO lié) ── */}
@@ -761,9 +784,15 @@ export default function DeviceForm({
 
         {/* Pied */}
         <div className="flex gap-3 px-5 py-4 flex-shrink-0 relative z-10" style={{ borderTop: '1px solid rgba(139,120,255,0.20)' }}>
-          <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">
+          <motion.button
+            type="button"
+            onClick={onClose}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            className="btn-secondary flex-1 py-2.5 text-sm"
+          >
             Annuler
-          </button>
+          </motion.button>
           <motion.button
             type="submit"
             disabled={isSaving}

@@ -90,7 +90,8 @@ export async function listDevices(req: Request, res: Response, next: NextFunctio
       prisma.device.findMany({
         where,
         include: {
-          assignedUser: { select: { id: true, displayName: true, email: true, avatar: true, isActive: true } },
+          assignedUser:  { select: { id: true, displayName: true, email: true, avatar: true, isActive: true } },
+          purchaseOrder: { select: { id: true, reference: true } },
         },
         orderBy: { [safeSortBy]: safeSortOrder },
         skip: (pageNum - 1) * limitNum,
