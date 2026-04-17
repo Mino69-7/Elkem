@@ -621,7 +621,7 @@ export default function Devices() {
       {/* ─── En-tête ─────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[var(--text-primary)]">Utilisateurs</h1>
+          <h1 className="text-xl font-bold text-[var(--text-primary)]">Appareils</h1>
           <p className="text-sm text-[var(--text-muted)] mt-0.5">
             {isLoading ? '…' : `${total} appareil${total > 1 ? 's' : ''} · ${activeTabMeta.label}`}
           </p>

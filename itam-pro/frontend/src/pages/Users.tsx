@@ -207,7 +207,7 @@ export default function Users() {
                 <div>
                   <h3 className="font-semibold text-[var(--text-primary)]">Désactiver {deactivating.displayName} ?</h3>
                   <p className="text-sm text-[var(--text-muted)] mt-1">
-                    Le compte sera désactivé. Ses appareils restent visibles dans la page Utilisateurs jusqu'à récupération physique par un technicien.
+                    Le compte sera désactivé. Ses appareils restent visibles dans la page Appareils jusqu'à récupération physique par un technicien.
                   </p>
                 </div>
                 <div className="flex gap-3">

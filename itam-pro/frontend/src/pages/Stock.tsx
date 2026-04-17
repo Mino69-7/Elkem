@@ -17,6 +17,8 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { FilterPill } from '../components/devices/DeviceFilters';
 import { DEVICE_TYPE_LABELS, formatDate } from '../utils/formatters';
+import { useStockNotifications } from '../hooks/useStockNotifications';
+import { useUIStore } from '../stores/uiStore';
 import type { DeviceType, Device } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -54,6 +56,8 @@ function TabInventaire() {
   const navigate = useNavigate();
   const [viewMode, setViewMode]         = useState<'grid' | 'list'>('grid');
   const [selectedModel, setSelectedModel] = useState<ModelStock | null>(null);
+  const { unviewedAlertTypes } = useStockNotifications();
+  const { markInventaireAlertViewed } = useUIStore();
 
   const { data: modelStock = [], isLoading: loadingModels } = useQuery<ModelStock[]>({
     queryKey: ['stock-summary'],
@@ -273,15 +277,28 @@ function TabInventaire() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {models.map((model, i) => {
                       const isEmpty = model.inStock === 0;
+                      const hasNotif = unviewedAlertTypes.has(model.type);
                       return (
                         <motion.div
                           key={model.id}
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: i * 0.04 }}
-                          onClick={() => setSelectedModel(model)}
-                          className="cursor-pointer"
+                          onClick={() => {
+                            markInventaireAlertViewed(model.type, model.inStock);
+                            setSelectedModel(model);
+                          }}
+                          className="cursor-pointer relative"
                         >
+                          {hasNotif && (
+                            <span
+                              className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full z-10 ring-2 ring-[var(--bg-primary)]"
+                              style={{
+                                background: 'rgba(139,92,246,0.90)',
+                                boxShadow: '0 0 8px rgba(139,92,246,0.55)',
+                              }}
+                            />
+                          )}
                           <GlassCard padding="md" className="h-full hover:border-primary/30 transition-colors">
                             <div className="flex items-start justify-between gap-2 mb-3">
                               <div className="min-w-0">
@@ -376,20 +393,32 @@ function TabInventaire() {
                           <tbody>
                             {models.map((model, i) => {
                               const isEmpty = model.inStock === 0;
+                              const hasNotif = unviewedAlertTypes.has(model.type);
                               return (
                                 <motion.tr
                                   key={model.id}
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
                                   transition={{ delay: i * 0.02 }}
-                                  onClick={() => setSelectedModel(model)}
+                                  onClick={() => {
+                                    markInventaireAlertViewed(model.type, model.inStock);
+                                    setSelectedModel(model);
+                                  }}
                                   className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
                                 >
                                   <td className="px-4 py-3">
                                     <div className="flex items-center gap-2">
                                       <Icon size={13} className="text-[var(--text-muted)] flex-shrink-0" />
                                       <div>
-                                        <p className="text-sm font-medium text-[var(--text-primary)]">{model.name}</p>
+                                        <p className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+                                          {model.name}
+                                          {hasNotif && (
+                                            <span
+                                              className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                                              style={{ background: 'rgba(139,92,246,0.85)', boxShadow: '0 0 6px rgba(139,92,246,0.45)' }}
+                                            />
+                                          )}
+                                        </p>
                                         <p className="text-[10px] text-[var(--text-muted)]">{model.brand}</p>
                                       </div>
                                     </div>
@@ -503,6 +532,8 @@ function TabDechets() {
   const [typeFilter,   setTypeFilter]   = useState<string | undefined>(undefined);
   const [modelFilter,  setModelFilter]  = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const { activeModelUnviewedDeviceIds } = useStockNotifications();
+  const { markDechetsDeviceViewed } = useUIStore();
 
   const { data: retiredDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['retired-devices'],
@@ -637,6 +668,7 @@ function TabDechets() {
                   const retiredAt     = device.retiredAt ? new Date(device.retiredAt).getTime() : null;
                   const isRecent      = retiredAt !== null && (now - retiredAt) < SIX_MONTHS_MS && !!device.purchaseOrderId;
                   const isActiveModel = activeModelKeys.has(`${device.brand}|${device.model}`);
+                  const hasNotif      = activeModelUnviewedDeviceIds.has(device.id);
                   const badge         = STATUS_BADGE[device.status];
                   const Icon          = TYPE_ICONS[device.type as DeviceType] ?? HelpCircle;
                   return (
@@ -645,11 +677,24 @@ function TabDechets() {
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.02 }}
-                      onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'dechets' } })}
+                      onClick={() => {
+                        if (hasNotif) markDechetsDeviceViewed(device.id);
+                        navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'dechets' } });
+                      }}
                       className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
-                        {device.assetTag ?? '—'}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          {hasNotif && (
+                            <span
+                              className="w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ background: 'rgba(139,92,246,0.80)', boxShadow: '0 0 6px rgba(139,92,246,0.35)' }}
+                            />
+                          )}
+                          <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+                            {device.assetTag ?? '—'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
@@ -707,6 +752,8 @@ function TabMaintenance() {
   const navigate = useNavigate();
   const [typeFilter,  setTypeFilter]  = useState<string | undefined>(undefined);
   const [modelFilter, setModelFilter] = useState<string | undefined>(undefined);
+  const { overdueUnviewedDeviceIds } = useStockNotifications();
+  const { markMaintenanceDeviceViewed } = useUIStore();
 
   const { data: maintDevices, isLoading } = useQuery<{ data: Device[]; total: number }>({
     queryKey: ['maintenance-devices'],
@@ -810,17 +857,31 @@ function TabMaintenance() {
                   const Icon     = TYPE_ICONS[device.type as DeviceType] ?? HelpCircle;
                   const deadline = device.maintenanceDeadline ? new Date(device.maintenanceDeadline) : null;
                   const isOverdue = deadline !== null && deadline < new Date();
+                  const hasNotif  = overdueUnviewedDeviceIds.has(device.id);
                   return (
                     <motion.tr
                       key={device.id}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.02 }}
-                      onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'maintenance' } })}
+                      onClick={() => {
+                        if (hasNotif) markMaintenanceDeviceViewed(device.id);
+                        navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'maintenance' } });
+                      }}
                       className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[var(--text-primary)]">
-                        {device.assetTag ?? '—'}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          {hasNotif && (
+                            <span
+                              className="w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ background: 'rgba(139,92,246,0.80)', boxShadow: '0 0 6px rgba(139,92,246,0.35)' }}
+                            />
+                          )}
+                          <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+                            {device.assetTag ?? '—'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
@@ -862,11 +923,11 @@ function TabMaintenance() {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function Stock() {
-  const navigate  = useNavigate();
   const location  = useLocation();
   const [activeTab, setActiveTab] = useState<string>(
     (location.state as any)?.tab ?? 'inventaire'
   );
+  const { inventaireCount, maintenanceCount, dechetsCount } = useStockNotifications();
 
   // Re-sync quand la navigation change (ex: retour depuis DeviceDetail ou clic Sidebar)
   useEffect(() => {
@@ -886,9 +947,9 @@ export default function Stock() {
       <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className="tabs-glass mb-6">
           {[
-            { value: 'inventaire',  label: 'Inventaire' },
-            { value: 'maintenance', label: 'Maintenance' },
-            { value: 'dechets',     label: 'Déchets' },
+            { value: 'inventaire',  label: 'Inventaire',  count: inventaireCount },
+            { value: 'maintenance', label: 'Maintenance', count: maintenanceCount },
+            { value: 'dechets',     label: 'Déchets',     count: dechetsCount },
           ].map((tab) => (
             <Tabs.Trigger
               key={tab.value}
@@ -912,7 +973,23 @@ export default function Stock() {
                   transition={{ type: 'spring', stiffness: 500, damping: 38 }}
                 />
               )}
-              <span className="relative z-10">{tab.label}</span>
+              <span className="relative z-10 flex items-center gap-1.5">
+                {tab.label}
+                {tab.count > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold leading-none text-white"
+                    style={{
+                      background: 'rgba(99,102,241,0.70)',
+                      backdropFilter: 'blur(4px)',
+                      WebkitBackdropFilter: 'blur(4px)',
+                      border: '1px solid rgba(139,120,255,0.55)',
+                      boxShadow: '0 2px 6px rgba(99,102,241,0.30)',
+                    }}
+                  >
+                    {tab.count > 99 ? '99+' : tab.count}
+                  </span>
+                )}
+              </span>
             </Tabs.Trigger>
           ))}
         </Tabs.List>

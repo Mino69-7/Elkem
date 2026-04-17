@@ -4,12 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import {
   Bell, Search, Menu, LogOut, X, Loader2,
   Laptop, Smartphone, Monitor, Package, User,
+  AlertTriangle, Wrench, Trash2, ChevronRight,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useAuth } from '../../hooks/useAuth';
+import { useStockNotifications } from '../../hooks/useStockNotifications';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import api from '../../services/api';
+import { DEVICE_TYPE_LABELS } from '../../utils/formatters';
 import type { Device, DeviceType, DeviceStatus } from '../../types';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -74,10 +77,14 @@ function DeviceTypeIcon({ type }: { type: DeviceType }) {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function TopBar() {
-  const { toggleSidebar, unreadCount } = useUIStore();
+  const { toggleSidebar } = useUIStore();
   const { setFilters } = useDeviceStore();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const {
+    totalCount, inventaireCount, maintenanceCount, dechetsCount,
+    triggeredAlerts, overdueDevices, activeModelDevices,
+  } = useStockNotifications();
 
   const [query,        setQuery]        = useState('');
   const [results,      setResults]      = useState<SearchResults | null>(null);
@@ -86,6 +93,12 @@ export default function TopBar() {
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const portalRef    = useRef<HTMLDivElement>(null);
+
+  // Bell panel state
+  const [bellOpen, setBellOpen]   = useState(false);
+  const [bellRect,  setBellRect]  = useState<DOMRect | null>(null);
+  const bellRef     = useRef<HTMLButtonElement>(null);
+  const bellPanelRef = useRef<HTMLDivElement>(null);
 
   // Met à jour la position du dropdown quand il s'ouvre ou que la fenêtre change de taille
   useEffect(() => {
@@ -115,6 +128,38 @@ export default function TopBar() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // ── Bell — position + fermeture sur clic extérieur ──────────
+  useEffect(() => {
+    if (!bellOpen || !bellRef.current) return;
+    const update = () => {
+      if (bellRef.current) setBellRect(bellRef.current.getBoundingClientRect());
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [bellOpen]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const inBell  = bellRef.current?.contains(target) ?? false;
+      const inPanel = bellPanelRef.current?.contains(target) ?? false;
+      if (!inBell && !inPanel) setBellOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleBellClick = () => {
+    setBellOpen((o) => !o);
+    if (!bellOpen && bellRef.current) setBellRect(bellRef.current.getBoundingClientRect());
+  };
+
+  const goToStock = (tab: string) => {
+    setBellOpen(false);
+    navigate('/stock', { state: { tab } });
+  };
 
   // ── Recherche debounced — déclenche à 3 caractères minimum ─
   useEffect(() => {
@@ -347,21 +392,256 @@ export default function TopBar() {
 
       <div className="flex-1" aria-hidden="true" />
 
-      {/* Notifications */}
+      {/* Cloche de notifications */}
       <button
+        ref={bellRef}
+        onClick={handleBellClick}
         className="relative w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors"
-        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} non lues)` : ''}`}
+        aria-label={`Notifications${totalCount > 0 ? ` (${totalCount})` : ''}`}
       >
         <Bell size={20} />
-        {unreadCount > 0 && (
+        {totalCount > 0 && (
           <span
-            className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center"
+            className="absolute top-1.5 right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full text-white text-[8px] font-bold flex items-center justify-center"
             aria-hidden="true"
+            style={{
+              background: 'rgba(99,102,241,0.85)',
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)',
+              border: '1px solid rgba(139,120,255,0.60)',
+              boxShadow: '0 2px 8px rgba(99,102,241,0.45)',
+            }}
           >
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {totalCount > 9 ? '9+' : totalCount}
           </span>
         )}
       </button>
+
+      {/* Panel notifications — portal pour passer au-dessus de tout */}
+      {bellOpen && bellRect && createPortal(
+        <div
+          ref={bellPanelRef}
+          style={{
+            position: 'fixed',
+            top: bellRect.bottom + 8,
+            right: window.innerWidth - bellRect.right,
+            width: 340,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            className="modal-glass p-0 overflow-hidden"
+            style={{ borderRadius: '16px' }}
+          >
+            {/* Décorations specular */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] rounded-t-[16px] pointer-events-none"
+              style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(139,120,255,0.60) 40%, rgba(34,211,238,0.50) 100%)' }} />
+            <div className="absolute top-0 left-0 bottom-0 w-[2px] rounded-l-[16px] pointer-events-none"
+              style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.20) 0%, transparent 100%)' }} />
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b"
+              style={{ borderColor: 'rgba(139,120,255,0.15)' }}>
+              <div className="flex items-center gap-2">
+                <Bell size={14} className="text-[var(--text-muted)]" />
+                <p className="text-sm font-semibold text-[var(--text-primary)]">Alertes Stock</p>
+              </div>
+              {totalCount > 0 && (
+                <span
+                  className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold text-white"
+                  style={{
+                    background: 'rgba(99,102,241,0.70)',
+                    backdropFilter: 'blur(4px)',
+                    WebkitBackdropFilter: 'blur(4px)',
+                    border: '1px solid rgba(139,120,255,0.55)',
+                    boxShadow: '0 2px 8px rgba(99,102,241,0.30)',
+                  }}
+                >
+                  {totalCount}
+                </span>
+              )}
+            </div>
+
+            {/* Corps */}
+            {totalCount === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 px-4 gap-2">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.20)' }}
+                >
+                  <Bell size={18} className="text-indigo-400" />
+                </div>
+                <p className="text-sm text-[var(--text-muted)] text-center">Aucune alerte active</p>
+              </div>
+            ) : (
+              <div className="max-h-[400px] overflow-y-auto">
+
+                {/* ── Inventaire ─────────────────────────────── */}
+                {inventaireCount > 0 && (
+                  <div>
+                    <button
+                      onClick={() => goToStock('inventaire')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.05] transition-colors text-left group"
+                    >
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'rgba(99,102,241,0.13)', border: '1px solid rgba(99,102,241,0.22)' }}
+                      >
+                        <AlertTriangle size={13} className="text-indigo-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-[var(--text-primary)]">Inventaire</p>
+                        <p className="text-[11px] text-indigo-300">
+                          {inventaireCount} alerte{inventaireCount > 1 ? 's' : ''} de rupture
+                        </p>
+                      </div>
+                      <ChevronRight size={13} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors flex-shrink-0" />
+                    </button>
+                    {triggeredAlerts.slice(0, 3).map((alert) => (
+                      <button
+                        key={alert.id}
+                        onClick={() => goToStock('inventaire')}
+                        className="w-full flex items-center gap-2 px-4 py-2 pl-14 hover:bg-white/[0.04] transition-colors text-left"
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ background: 'rgba(99,102,241,0.75)' }}
+                        />
+                        <span className="text-[11px] text-[var(--text-secondary)] truncate">
+                          {DEVICE_TYPE_LABELS[alert.deviceType] ?? alert.deviceType}
+                        </span>
+                        <span className="ml-auto text-[10px] font-semibold text-indigo-300 flex-shrink-0">
+                          {alert.currentStock} / {alert.threshold}
+                        </span>
+                      </button>
+                    ))}
+                    {triggeredAlerts.length > 3 && (
+                      <p className="text-[10px] text-[var(--text-muted)] px-14 pb-2">
+                        +{triggeredAlerts.length - 3} autre{triggeredAlerts.length - 3 > 1 ? 's' : ''}…
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {inventaireCount > 0 && (maintenanceCount > 0 || dechetsCount > 0) && (
+                  <div className="mx-4 my-1 h-px" style={{ background: 'rgba(139,120,255,0.12)' }} />
+                )}
+
+                {/* ── Maintenance ────────────────────────────── */}
+                {maintenanceCount > 0 && (
+                  <div>
+                    <button
+                      onClick={() => goToStock('maintenance')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.05] transition-colors text-left group"
+                    >
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.20)' }}
+                      >
+                        <Wrench size={13} className="text-indigo-300" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-[var(--text-primary)]">Maintenance</p>
+                        <p className="text-[11px] text-violet-300">
+                          {maintenanceCount} deadline{maintenanceCount > 1 ? 's' : ''} dépassée{maintenanceCount > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      <ChevronRight size={13} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors flex-shrink-0" />
+                    </button>
+                    {overdueDevices.slice(0, 3).map((device) => (
+                      <button
+                        key={device.id}
+                        onClick={() => { navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'maintenance' } }); setBellOpen(false); }}
+                        className="w-full flex items-center gap-2 px-4 py-2 pl-14 hover:bg-white/[0.04] transition-colors text-left"
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ background: 'rgba(139,92,246,0.75)' }}
+                        />
+                        <span className="text-[11px] text-[var(--text-secondary)] truncate font-mono">
+                          {device.serialNumber}
+                        </span>
+                        <span className="ml-auto text-[10px] text-[var(--text-muted)] flex-shrink-0 truncate max-w-[80px]">
+                          {device.brand} {device.model}
+                        </span>
+                      </button>
+                    ))}
+                    {overdueDevices.length > 3 && (
+                      <p className="text-[10px] text-[var(--text-muted)] px-14 pb-2">
+                        +{overdueDevices.length - 3} autre{overdueDevices.length - 3 > 1 ? 's' : ''}…
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {maintenanceCount > 0 && dechetsCount > 0 && (
+                  <div className="mx-4 my-1 h-px" style={{ background: 'rgba(139,120,255,0.12)' }} />
+                )}
+
+                {/* ── Déchets ─────────────────────────────────── */}
+                {dechetsCount > 0 && (
+                  <div>
+                    <button
+                      onClick={() => goToStock('dechets')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.05] transition-colors text-left group"
+                    >
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'rgba(139,92,246,0.13)', border: '1px solid rgba(139,92,246,0.22)' }}
+                      >
+                        <Trash2 size={13} className="text-violet-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-[var(--text-primary)]">Déchets</p>
+                        <p className="text-[11px] text-violet-300">
+                          {dechetsCount} modèle{dechetsCount > 1 ? 's' : ''} actif{dechetsCount > 1 ? 's' : ''} en déchets
+                        </p>
+                      </div>
+                      <ChevronRight size={13} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors flex-shrink-0" />
+                    </button>
+                    {activeModelDevices.slice(0, 3).map((device) => (
+                      <button
+                        key={device.id}
+                        onClick={() => { navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'dechets' } }); setBellOpen(false); }}
+                        className="w-full flex items-center gap-2 px-4 py-2 pl-14 hover:bg-white/[0.04] transition-colors text-left"
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ background: 'rgba(139,92,246,0.75)' }}
+                        />
+                        <span className="text-[11px] text-[var(--text-secondary)] truncate">
+                          {device.brand} {device.model}
+                        </span>
+                        <span className="ml-auto text-[10px] font-mono text-[var(--text-muted)] flex-shrink-0">
+                          {device.serialNumber}
+                        </span>
+                      </button>
+                    ))}
+                    {activeModelDevices.length > 3 && (
+                      <p className="text-[10px] text-[var(--text-muted)] px-14 pb-2">
+                        +{activeModelDevices.length - 3} autre{activeModelDevices.length - 3 > 1 ? 's' : ''}…
+                      </p>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            )}
+
+            {/* Footer */}
+            {totalCount > 0 && (
+              <div className="px-4 py-2.5 border-t" style={{ borderColor: 'rgba(139,120,255,0.15)' }}>
+                <button
+                  onClick={() => goToStock('inventaire')}
+                  className="text-[11px] text-primary hover:underline transition-colors"
+                >
+                  Voir l'inventaire →
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      , document.body)}
 
       {/* Avatar + dropdown profil */}
       <DropdownMenu.Root>

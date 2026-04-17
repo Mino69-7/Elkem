@@ -25,13 +25,21 @@ interface UIStore {
   toggleSidebarCollapse: () => void;
   setSidebarOpen: (open: boolean) => void;
 
-  // Notifications
+  // Notifications système (legacy)
   notifications: Notification[];
   unreadCount: number;
   addNotification: (notif: Omit<Notification, 'id' | 'read' | 'createdAt'>) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   clearNotifications: () => void;
+
+  // Alertes stock vues — persistées pour "pastille disparaît après consultation"
+  viewedInventaireAlerts: Record<string, number>; // { [deviceType]: stockWhenViewed }
+  viewedMaintenanceDevices: string[];             // device IDs vus en maintenance
+  viewedDechetsDevices: string[];                 // device IDs vus en déchets
+  markInventaireAlertViewed: (deviceType: string, currentStock: number) => void;
+  markMaintenanceDeviceViewed: (deviceId: string) => void;
+  markDechetsDeviceViewed: (deviceId: string) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -76,10 +84,37 @@ export const useUIStore = create<UIStore>()(
         }));
       },
       clearNotifications: () => set({ notifications: [], unreadCount: 0 }),
+
+      // ─── Alertes stock vues ───────────────────────────────
+      viewedInventaireAlerts: {},
+      viewedMaintenanceDevices: [],
+      viewedDechetsDevices: [],
+      markInventaireAlertViewed: (deviceType, currentStock) =>
+        set((s) => ({
+          viewedInventaireAlerts: { ...s.viewedInventaireAlerts, [deviceType]: currentStock },
+        })),
+      markMaintenanceDeviceViewed: (deviceId) =>
+        set((s) => ({
+          viewedMaintenanceDevices: s.viewedMaintenanceDevices.includes(deviceId)
+            ? s.viewedMaintenanceDevices
+            : [...s.viewedMaintenanceDevices.slice(-199), deviceId],
+        })),
+      markDechetsDeviceViewed: (deviceId) =>
+        set((s) => ({
+          viewedDechetsDevices: s.viewedDechetsDevices.includes(deviceId)
+            ? s.viewedDechetsDevices
+            : [...s.viewedDechetsDevices.slice(-199), deviceId],
+        })),
     }),
     {
       name: 'itam-ui-store',
-      partialize: (s) => ({ theme: s.theme, sidebarCollapsed: s.sidebarCollapsed }),
+      partialize: (s) => ({
+        theme: s.theme,
+        sidebarCollapsed: s.sidebarCollapsed,
+        viewedInventaireAlerts: s.viewedInventaireAlerts,
+        viewedMaintenanceDevices: s.viewedMaintenanceDevices,
+        viewedDechetsDevices: s.viewedDechetsDevices,
+      }),
     }
   )
 );

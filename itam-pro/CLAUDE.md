@@ -159,7 +159,7 @@ Pas un panneau plein bord. Position : `right:16px, top:16px, bottom:16px`, `widt
 | **Stock** › Inventaire | Pool de matériel disponible par modèle + liste individuelle | IN_STOCK, ORDERED |
 | **Stock** › Maintenance | Appareils en maintenance (avec ou sans utilisateur assigné) | IN_MAINTENANCE |
 | **Stock** › Déchets | Appareils retirés du parc | RETIRED, LOST, STOLEN (badge ⚠ Récent si via PO < 180j) |
-| **Utilisateurs** (/devices) | Appareils avec utilisateur réellement affecté (`assigned=true`) | Tous statuts avec `assignedUserId NOT NULL` |
+| **Appareils** (/devices) | Appareils avec utilisateur réellement affecté (`assigned=true`) | Tous statuts avec `assignedUserId NOT NULL` |
 | **Commandes** › Commandes | Bons de commande actifs (PENDING/PARTIAL) | PurchaseOrder |
 | **Commandes** › Historique | Toutes les commandes tous statuts + manager | PurchaseOrder (tous) |
 | **Commandes** › Catalogue | CRUD modèles DeviceModel (MANAGER) | — |
@@ -178,14 +178,14 @@ Pas un panneau plein bord. Position : `right:16px, top:16px, bottom:16px`, `widt
 
 Ordre des entrées dans la sidebar :
 1. Dashboard (`/dashboard`, `LayoutDashboard`)
-2. **Utilisateurs** (`/devices`, `BookUser`) — parc déployé
-3. Stock (`/stock`, `Package`)
+2. **Appareils** (`/devices`, `Laptop`) — parc déployé (anciennement "Utilisateurs" / `BookUser`)
+3. Stock (`/stock`, `Package`) — badge violet de notifications si alertes actives
 4. Commandes (`/orders`, `ShoppingCart`)
 5. **Admin** (`/users`, `ShieldCheck`) — comptes IT uniquement
 6. Sync Intune (`/intune`, `RefreshCw`)
 7. Rapports (`/reports`, `BarChart3`)
 
-**Important** : l'icône `Laptop` doit rester importée dans `Sidebar.tsx` — elle est utilisée dans le logo de la sidebar (lignes ~70 et ~84). Ne pas la supprimer même si elle n'apparaît pas dans les nav items.
+**Note** : `Laptop` est utilisé à la fois dans le logo sidebar ET dans l'item "Appareils" — ne pas supprimer.
 
 ---
 
@@ -471,7 +471,7 @@ Les champs Achat, Garantie, Prix, Fournisseur, N° facture, Créé le, Modifié 
 - Page Commandes (/orders) : 4 onglets — Commandes, Historique, Catalogue, Règles alerte
 - Page Stock : inventaire par modèle, vue grille/liste, onglet Déchets
 - Détection doublons dans DeviceTable (badge orange)
-- Sidebar renommée : "Utilisateurs" (BookUser) = parc déployé, "Admin" (ShieldCheck) = comptes IT
+- Sidebar renommée : "Appareils" (Laptop) = parc déployé, "Admin" (ShieldCheck) = comptes IT
 
 ### ✅ Phase 7 — Cohérence navigation & architecture (2026-03-24)
 - Sidebar lit `location.state.from` → item actif correct quelle que soit la page d'origine
@@ -635,7 +635,7 @@ function buildHostname(type, site, sn, labType): string {
 - `DELETE /devices/:id/unassign` → `PATCH /devices/:id/unassign` → `IN_STOCK` + audit `UNASSIGNED`
 - Permissions : TECHNICIAN + MANAGER (plus MANAGER uniquement)
 
-#### Page Utilisateurs (/devices) — filtre corrigé
+#### Page Appareils (/devices) — filtre corrigé
 - **Filtre** : `useDevices({ type: activeTab, assigned: true })` → `GET /devices?assigned=true&type=...`
 - Avant : `statuses: 'ASSIGNED,LOST,STOLEN'` → causait l'apparition de devices sans utilisateur
 - Désormais : seuls les appareils avec `assignedUserId NOT NULL` s'affichent, quel que soit leur statut
@@ -927,7 +927,7 @@ Quand un utilisateur navigue vers la fiche d'un appareil depuis un onglet préci
 | Stock › Inventaire | `/stock` | `inventaire` |
 | Stock › Maintenance | `/stock` | `maintenance` |
 | Stock › Déchets | `/stock` | `dechets` |
-| Utilisateurs (DeviceTable) | `/devices` | type actif (`LAPTOP`, `DESKTOP`…) |
+| Appareils (DeviceTable) | `/devices` | type actif (`LAPTOP`, `DESKTOP`…) |
 | Commandes › Onglet Commandes | `/orders` | `orders` |
 | Commandes › Historique | `/orders` | `history` |
 | Dashboard | `/dashboard` | — (pas de tab) |
@@ -1205,6 +1205,78 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
   - `--bg-glass` = `var(--glass-bg)` (liquid-glass.css override sur index.css) : `rgba(255,255,255,0.28)` light / `rgba(5,5,18,0.36)` dark
   - `--border-glass` = `var(--glass-border)` : `rgba(255,255,255,0.65)` light / `rgba(255,255,255,0.13)` dark
   - `--blur` = `blur(20px) saturate(1.8) brightness(1.04)` light / `blur(22px) saturate(1.5) brightness(0.95)` dark
+
+---
+
+### ✅ Phase 24 — UX navigation, bouton Désaffecter & système de notifications (2026-04-17)
+
+#### Suppression bouton Trash2 — fusion dans "Désaffecter" (DeviceDetail.tsx)
+- Bouton Trash2 dans le header de DeviceDetail supprimé — redondant avec "Désaffecter"
+- "Désaffecter" (`UserMinus`) visible en permanence pour tout `canEdit`, même sans utilisateur assigné
+- Comportement absorbé : ouvre la même popup de choix de destination (IN_STOCK / RETIRED / LOST / STOLEN)
+
+#### Style bouton "Désaffecter" — liquid glass orange hover
+- `motion.button` avec `whileHover={{ scale: 1.03 }}` + `whileTap={{ scale: 0.97 }}`
+- État repos : fond `rgba(245,158,11,0.08)`, border `rgba(245,158,11,0.30)`, texte `text-amber-400`
+- Hover : gradient plein `linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)` via span `opacity-0 group-hover:opacity-100`
+- **Pattern obligatoire** pour hover gradient sur bouton avec `style.background` inline : utiliser une `<span>` absolue avec `opacity-0 group-hover:opacity-100` + classe `group` sur le bouton — Tailwind `hover:bg-*` ne peut pas overrider un `style.background` inline
+
+#### Renommage "Utilisateurs" → "Appareils"
+- Sidebar item `/devices` : label `'Utilisateurs'` → `'Appareils'`, icône `BookUser` → `Laptop`
+- MobileNav item `/devices` : même changement
+- `Devices.tsx` : titre `<h1>Appareils</h1>`
+- `Users.tsx` : texte modal désactivation "page Utilisateurs" → "page Appareils"
+- **Ne pas changer** : section "Utilisateurs" du dropdown de recherche TopBar (réfère aux personnes, pas à la page)
+
+#### Système de notifications stock
+
+**Architecture**
+
+`uiStore.ts` — 3 états vus persistés en localStorage :
+- `viewedInventaireAlerts: Record<string, number>` — `{ [deviceType]: stockAtView }` — ré-notifie si stock baisse encore
+- `viewedMaintenanceDevices: string[]` — IDs devices vus (cap 200 entrées)
+- `viewedDechetsDevices: string[]` — IDs devices vus (cap 200 entrées)
+- 3 actions `markInventaireAlertViewed`, `markMaintenanceDeviceViewed`, `markDechetsDeviceViewed`
+- Ajoutés au `partialize` — persistés entre sessions
+
+`hooks/useStockNotifications.ts` — hook central (nouveau fichier) :
+- Fetche `['stockalerts']`, `['maintenance-devices']`, `['retired-devices']`, `['device-models']`
+- TanStack Query déduplique — zéro fetch supplémentaire si les tabs Stock sont ouverts en même temps
+- Retourne : `inventaireCount`, `maintenanceCount`, `dechetsCount`, `totalCount`
+- Retourne : `unviewedAlertTypes: Set<string>` (types avec alerte non lue), `overdueUnviewedDeviceIds`, `activeModelUnviewedDeviceIds`
+- Retourne : `triggeredAlerts[]`, `overdueDevices[]`, `activeModelDevices[]` pour le dropdown TopBar
+
+**Logique par onglet**
+| Onglet | Condition de notification | Disparaît quand |
+|---|---|---|
+| Inventaire | `alert.isActive && alert.triggered && (jamais vu OU currentStock < stockAtView)` | Clic sur une carte de modèle de ce type |
+| Maintenance | Device avec `maintenanceDeadline < now` et non vu | Clic sur la ligne du device |
+| Déchets | Device retraité dont le modèle est encore `isActive` dans le catalogue et non vu | Clic sur la ligne du device |
+
+**Affichage**
+- `Stock.tsx` : badges count (glass indigo) sur chaque onglet + point violet par carte/ligne concernée
+- `Sidebar.tsx` : badge `totalCount` (glass indigo) à droite de "Stock" — version expanded et collapsed
+- `TopBar.tsx` : cloche avec badge indigo + dropdown panel (`createPortal z-9999`) — 3 sections cliquables, chaque section navigue vers le bon onglet Stock via `navigate('/stock', { state: { tab } })`
+
+**Règle design — pastilles de notification**
+- **JAMAIS d'amber/jaune** pour les pastilles de notification — violets/indigo uniquement
+- Badge count : `background: rgba(99,102,241,0.70)`, `border: rgba(139,120,255,0.55)`, `boxShadow: 0 2px 6px rgba(99,102,241,0.30)`, texte blanc
+- Dot par item : `background: rgba(139,92,246,0.80)` avec glow `0 0 6px rgba(139,92,246,0.35)`
+- Cette règle s'applique partout : Sidebar, tabs, lignes de table, dropdown
+- L'amber reste acceptable pour les badges de **contenu** existants (stock vide, KPI Ruptures, badge "Modèle actif")
+
+#### Fichiers créés/modifiés
+| Fichier | Changement |
+|---|---|
+| `frontend/src/stores/uiStore.ts` | Viewed states + mark actions + partialize étendu |
+| `frontend/src/hooks/useStockNotifications.ts` | **Nouveau** — hook central notifications |
+| `frontend/src/pages/Stock.tsx` | Import hook + mark actions + badges tabs + dots per-item |
+| `frontend/src/components/layout/Sidebar.tsx` | Import hook + badge sur item "Stock" |
+| `frontend/src/components/layout/TopBar.tsx` | Import hook + bell fonctionnelle + dropdown panel portal |
+| `frontend/src/pages/DeviceDetail.tsx` | Suppression Trash2, "Désaffecter" permanent, style orange hover |
+| `frontend/src/components/layout/MobileNav.tsx` | BookUser → Laptop, label "Appareils" |
+| `frontend/src/pages/Devices.tsx` | Titre "Appareils" |
+| `frontend/src/pages/Users.tsx` | Texte modal "page Appareils" |
 
 ---
 

@@ -3,16 +3,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Laptop, Package, RefreshCw,
   BarChart3, Settings, LogOut, ChevronLeft, ChevronRight,
-  Moon, Sun, X, ShoppingCart, BookUser, ShieldCheck
+  Moon, Sun, X, ShoppingCart, ShieldCheck
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useStockNotifications } from '../../hooks/useStockNotifications';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { clsx } from 'clsx';
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/devices',   icon: BookUser,        label: 'Utilisateurs' },
+  { to: '/devices',   icon: Laptop,          label: 'Appareils' },
   { to: '/stock',     icon: Package,         label: 'Stock' },
   { to: '/orders',    icon: ShoppingCart,    label: 'Commandes' },
   { to: '/users',     icon: ShieldCheck,     label: 'Admin' },
@@ -45,6 +46,7 @@ interface SidebarProps {
 export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const { sidebarCollapsed, toggleSidebarCollapse, theme, toggleTheme } = useUIStore();
   const { logout } = useAuthStore();
+  const { totalCount: stockNotifCount } = useStockNotifications();
   const location = useLocation();
 
   const collapsed = mobile ? false : sidebarCollapsed;
@@ -153,6 +155,7 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
           {NAV_ITEMS.map((item) => {
             const isActive = effectivePath.startsWith(item.to);
             const Icon = item.icon;
+            const badgeCount = item.to === '/stock' ? stockNotifCount : 0;
 
             if (collapsed) {
               return (
@@ -170,6 +173,20 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     >
                       {isActive && <ActivePill layoutId={pillId} />}
                       <Icon size={18} className="relative z-10" />
+                      {badgeCount > 0 && (
+                        <span
+                          className="absolute top-1 right-1 min-w-[14px] h-3.5 px-0.5 rounded-full text-[8px] font-bold text-white flex items-center justify-center z-20"
+                          style={{
+                            background: 'rgba(99,102,241,0.80)',
+                            backdropFilter: 'blur(4px)',
+                            WebkitBackdropFilter: 'blur(4px)',
+                            border: '1px solid rgba(139,120,255,0.55)',
+                            boxShadow: '0 2px 6px rgba(99,102,241,0.35)',
+                          }}
+                        >
+                          {badgeCount > 99 ? '99+' : badgeCount}
+                        </span>
+                      )}
                     </NavLink>
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
@@ -201,7 +218,21 @@ export default function Sidebar({ mobile = false, onClose }: SidebarProps) {
               >
                 {isActive && <ActivePill layoutId={pillId} />}
                 <Icon size={18} className="relative z-10 flex-shrink-0" />
-                <span className="relative z-10">{item.label}</span>
+                <span className="relative z-10 flex-1">{item.label}</span>
+                {badgeCount > 0 && (
+                  <span
+                    className="relative z-10 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[9px] font-bold text-white leading-none"
+                    style={{
+                      background: 'rgba(99,102,241,0.70)',
+                      backdropFilter: 'blur(4px)',
+                      WebkitBackdropFilter: 'blur(4px)',
+                      border: '1px solid rgba(139,120,255,0.55)',
+                      boxShadow: '0 2px 6px rgba(99,102,241,0.28)',
+                    }}
+                  >
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </span>
+                )}
               </NavLink>
             );
           })}
