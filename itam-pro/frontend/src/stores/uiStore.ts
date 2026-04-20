@@ -34,10 +34,14 @@ interface UIStore {
   clearNotifications: () => void;
 
   // Alertes stock vues — persistées pour "pastille disparaît après consultation"
-  viewedInventaireAlerts: Record<string, number>; // { [deviceType]: stockWhenViewed }
+  viewedInventaireModels: Record<string, number>; // { [modelId]: inStockWhenViewed }
   viewedMaintenanceDevices: string[];             // device IDs vus en maintenance
   viewedDechetsDevices: string[];                 // device IDs vus en déchets
-  markInventaireAlertViewed: (deviceType: string, currentStock: number) => void;
+  markInventaireModelViewed: (modelId: string, inStock: number) => void;
+  /** Efface les entrées viewedInventaireModels pour les modelIds donnés.
+   *  Appeler quand une alerte est créée ou son seuil modifié :
+   *  les pastilles doivent réapparaître immédiatement si le stock est toujours sous le seuil. */
+  clearInventaireModelsViewed: (modelIds: string[]) => void;
   markMaintenanceDeviceViewed: (deviceId: string) => void;
   markDechetsDeviceViewed: (deviceId: string) => void;
 }
@@ -86,13 +90,19 @@ export const useUIStore = create<UIStore>()(
       clearNotifications: () => set({ notifications: [], unreadCount: 0 }),
 
       // ─── Alertes stock vues ───────────────────────────────
-      viewedInventaireAlerts: {},
+      viewedInventaireModels: {},
       viewedMaintenanceDevices: [],
       viewedDechetsDevices: [],
-      markInventaireAlertViewed: (deviceType, currentStock) =>
+      markInventaireModelViewed: (modelId, inStock) =>
         set((s) => ({
-          viewedInventaireAlerts: { ...s.viewedInventaireAlerts, [deviceType]: currentStock },
+          viewedInventaireModels: { ...s.viewedInventaireModels, [modelId]: inStock },
         })),
+      clearInventaireModelsViewed: (modelIds) =>
+        set((s) => {
+          const next = { ...s.viewedInventaireModels };
+          modelIds.forEach((id) => delete next[id]);
+          return { viewedInventaireModels: next };
+        }),
       markMaintenanceDeviceViewed: (deviceId) =>
         set((s) => ({
           viewedMaintenanceDevices: s.viewedMaintenanceDevices.includes(deviceId)
@@ -111,7 +121,7 @@ export const useUIStore = create<UIStore>()(
       partialize: (s) => ({
         theme: s.theme,
         sidebarCollapsed: s.sidebarCollapsed,
-        viewedInventaireAlerts: s.viewedInventaireAlerts,
+        viewedInventaireModels: s.viewedInventaireModels,
         viewedMaintenanceDevices: s.viewedMaintenanceDevices,
         viewedDechetsDevices: s.viewedDechetsDevices,
       }),

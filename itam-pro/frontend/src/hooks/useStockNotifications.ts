@@ -9,10 +9,18 @@ import type { Device, DeviceType } from '../types';
 interface StockAlertRow {
   id: string;
   deviceType: DeviceType;
+  deviceModelId: string | null;
+  deviceModel: { id: string; brand: string; name: string; type: DeviceType } | null;
   threshold: number;
   isActive: boolean;
   currentStock: number;
   triggered: boolean;
+}
+
+interface ModelSummary {
+  id: string;
+  type: DeviceType;
+  inStock: number;
 }
 
 export interface StockNotifications {
@@ -20,25 +28,29 @@ export interface StockNotifications {
   maintenanceCount: number;
   dechetsCount: number;
   totalCount: number;
-  /** Types d'appareils avec une alerte déclenchée non consultée */
+  /** IDs de modèles (modelId) avec une alerte déclenchée non consultée */
+  unviewedInventaireModelIds: Set<string>;
+  /** Types d'appareils avec au moins un modèle non consulté (pour TopBar) */
   unviewedAlertTypes: Set<string>;
   /** IDs de devices en maintenance dépassant leur deadline et non consultés */
   overdueUnviewedDeviceIds: Set<string>;
   /** IDs de devices en déchets avec un modèle actif et non consultés */
   activeModelUnviewedDeviceIds: Set<string>;
-  /** Alertes déclenchées non consultées (pour le dropdown) */
+  /** Alertes déclenchées non consultées (pour le dropdown TopBar) */
   triggeredAlerts: StockAlertRow[];
   /** Appareils en maintenance en retard non consultés */
   overdueDevices: Device[];
   /** Appareils en déchets avec modèle actif non consultés */
   activeModelDevices: Device[];
+  /** Mapping modelId → inStock pour les modèles non vus (pour markAllViewed) */
+  unviewedModelsWithStock: { id: string; inStock: number }[];
 }
 
 // ─── Hook ─────────────────────────────────────────────────────
 
 export function useStockNotifications(): StockNotifications {
   const {
-    viewedInventaireAlerts,
+    viewedInventaireModels,
     viewedMaintenanceDevices,
     viewedDechetsDevices,
   } = useUIStore();
@@ -46,6 +58,13 @@ export function useStockNotifications(): StockNotifications {
   const { data: alerts = [] } = useQuery<StockAlertRow[]>({
     queryKey: ['stockalerts'],
     queryFn: () => api.get('/stockalerts').then((r) => r.data),
+    staleTime: 30_000,
+  });
+
+  // Stock-summary pour avoir les modèles par type — TanStack Query déduplique avec Stock.tsx
+  const { data: stockSummary = [] } = useQuery<ModelSummary[]>({
+    queryKey: ['stock-summary'],
+    queryFn: () => api.get('/devicemodels/stock-summary').then((r) => r.data),
     staleTime: 30_000,
   });
 
@@ -79,18 +98,44 @@ export function useStockNotifications(): StockNotifications {
     const activeModelKeys = new Set(activeModels.map((m) => `${m.brand}|${m.name}`));
     const now = new Date();
 
-    // ── Inventaire ──────────────────────────────────────────
+    // ── Inventaire — granularité par modelId ────────────────
+    // Alerte par modèle (deviceModelId != null) → pastille uniquement sur ce modèle.
+    // Alerte par type (deviceModelId == null)   → pastille sur tous les modèles du type.
+    // Dans les deux cas, la pastille disparaît quand ce modelId est marqué consulté.
+    const unviewedInventaireModelIds = new Set<string>();
     const unviewedAlertTypes = new Set<string>();
     const triggeredAlerts: StockAlertRow[] = [];
+
     for (const alert of alerts) {
       if (!alert.isActive || !alert.triggered) continue;
-      const viewed = viewedInventaireAlerts[alert.deviceType];
-      // Non vu si jamais vu, ou si le stock a baissé depuis la dernière consultation
-      if (viewed === undefined || alert.currentStock < viewed) {
+
+      const candidates = alert.deviceModelId
+        // Alerte par modèle : un seul modèle concerné
+        ? stockSummary.filter((m) => m.id === alert.deviceModelId)
+        // Alerte par type : tous les modèles du type
+        : stockSummary.filter((m) => m.type === alert.deviceType);
+
+      let hasUnviewed = false;
+      for (const model of candidates) {
+        const seenAt = viewedInventaireModels[model.id];
+        if (seenAt === undefined || model.inStock < seenAt) {
+          unviewedInventaireModelIds.add(model.id);
+          hasUnviewed = true;
+        }
+      }
+
+      if (hasUnviewed) {
         unviewedAlertTypes.add(alert.deviceType);
         triggeredAlerts.push(alert);
       }
     }
+
+    // Mapping modelId → inStock pour les modèles non vus (utilisé par "tout vider")
+    const unviewedModelsWithStock = stockSummary
+      .filter((m) => unviewedInventaireModelIds.has(m.id))
+      .map((m) => ({ id: m.id, inStock: m.inStock }));
+
+    // inventaireCount = nombre de types distincts avec au moins un modèle non vu
     const inventaireCount = unviewedAlertTypes.size;
 
     // ── Maintenance ─────────────────────────────────────────
@@ -126,19 +171,22 @@ export function useStockNotifications(): StockNotifications {
       maintenanceCount,
       dechetsCount,
       totalCount: inventaireCount + maintenanceCount + dechetsCount,
+      unviewedInventaireModelIds,
       unviewedAlertTypes,
       overdueUnviewedDeviceIds,
       activeModelUnviewedDeviceIds,
       triggeredAlerts,
       overdueDevices,
       activeModelDevices,
+      unviewedModelsWithStock,
     };
   }, [
     alerts,
+    stockSummary,
     maintData,
     retiredData,
     activeModels,
-    viewedInventaireAlerts,
+    viewedInventaireModels,
     viewedMaintenanceDevices,
     viewedDechetsDevices,
   ]);

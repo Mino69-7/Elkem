@@ -93,8 +93,8 @@ export default function Users() {
           value={role}
           options={[
             { value: 'MANAGER',    label: 'Manager'    },
-            { value: 'TECHNICIAN', label: 'Technicien' },
-            { value: 'VIEWER',     label: 'Lecteur'    },
+            { value: 'TECHNICIAN', label: 'Technicien'          },
+            { value: 'VIEWER',     label: 'Technicien Proximité' },
           ]}
           onChange={(v) => setRole(v as Role | undefined)}
         />

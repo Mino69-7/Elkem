@@ -295,6 +295,7 @@ model DeviceModel {
 
   purchaseOrders PurchaseOrder[]
   devices        Device[]
+  stockAlerts    StockAlert[]
 
   @@unique([name, type])
   // Index : filtres catalogue (isActive très fréquent), tri display
@@ -307,16 +308,18 @@ model DeviceModel {
 // ─── ALERTES STOCK ───────────────────────────────────────────
 
 model StockAlert {
-  id          String      @id @default(cuid())
-  deviceType  DeviceType
-  threshold   Int         @default(3)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id            String       @id @default(cuid())
+  deviceType    DeviceType
+  deviceModelId String?
+  deviceModel   DeviceModel? @relation(fields: [deviceModelId], references: [id], onDelete: SetNull)
+  threshold     Int          @default(3)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
-  // Index : getTriggered filtre WHERE isActive=true, upsert sur deviceType
   @@index([deviceType])
   @@index([isActive])
+  @@index([deviceModelId])
 }
 
 // ─── COMMANDES D'ACHAT ───────────────────────────────────────

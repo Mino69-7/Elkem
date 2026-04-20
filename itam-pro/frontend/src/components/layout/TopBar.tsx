@@ -77,13 +77,18 @@ function DeviceTypeIcon({ type }: { type: DeviceType }) {
 // ─── Composant principal ──────────────────────────────────────
 
 export default function TopBar() {
-  const { toggleSidebar } = useUIStore();
+  const {
+    toggleSidebar,
+    markInventaireModelViewed,
+    markMaintenanceDeviceViewed,
+    markDechetsDeviceViewed,
+  } = useUIStore();
   const { setFilters } = useDeviceStore();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const {
     totalCount, inventaireCount, maintenanceCount, dechetsCount,
-    triggeredAlerts, overdueDevices, activeModelDevices,
+    triggeredAlerts, overdueDevices, activeModelDevices, unviewedModelsWithStock,
   } = useStockNotifications();
 
   const [query,        setQuery]        = useState('');
@@ -159,6 +164,13 @@ export default function TopBar() {
   const goToStock = (tab: string) => {
     setBellOpen(false);
     navigate('/stock', { state: { tab } });
+  };
+
+  const clearAllNotifications = () => {
+    unviewedModelsWithStock.forEach(({ id, inStock }) => markInventaireModelViewed(id, inStock));
+    overdueDevices.forEach((d) => markMaintenanceDeviceViewed(d.id));
+    activeModelDevices.forEach((d) => markDechetsDeviceViewed(d.id));
+    setBellOpen(false);
   };
 
   // ── Recherche debounced — déclenche à 3 caractères minimum ─
@@ -445,20 +457,42 @@ export default function TopBar() {
               <div className="flex items-center gap-2">
                 <Bell size={14} className="text-[var(--text-muted)]" />
                 <p className="text-sm font-semibold text-[var(--text-primary)]">Alertes Stock</p>
+                {totalCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold text-white"
+                    style={{
+                      background: 'rgba(99,102,241,0.70)',
+                      backdropFilter: 'blur(4px)',
+                      WebkitBackdropFilter: 'blur(4px)',
+                      border: '1px solid rgba(139,120,255,0.55)',
+                      boxShadow: '0 2px 8px rgba(99,102,241,0.30)',
+                    }}
+                  >
+                    {totalCount}
+                  </span>
+                )}
               </div>
               {totalCount > 0 && (
-                <span
-                  className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold text-white"
+                <button
+                  onClick={clearAllNotifications}
+                  title="Tout marquer comme lu"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
                   style={{
-                    background: 'rgba(99,102,241,0.70)',
-                    backdropFilter: 'blur(4px)',
-                    WebkitBackdropFilter: 'blur(4px)',
-                    border: '1px solid rgba(139,120,255,0.55)',
-                    boxShadow: '0 2px 8px rgba(99,102,241,0.30)',
+                    background: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.20)',
+                    color: 'rgba(248,113,113,0.80)',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.18)';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'rgb(248,113,113)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.08)';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,113,113,0.80)';
                   }}
                 >
-                  {totalCount}
-                </span>
+                  <Trash2 size={13} />
+                </button>
               )}
             </div>
 
@@ -508,7 +542,9 @@ export default function TopBar() {
                           style={{ background: 'rgba(99,102,241,0.75)' }}
                         />
                         <span className="text-[11px] text-[var(--text-secondary)] truncate">
-                          {DEVICE_TYPE_LABELS[alert.deviceType] ?? alert.deviceType}
+                          {alert.deviceModel
+                            ? `${alert.deviceModel.brand} ${alert.deviceModel.name}`
+                            : (DEVICE_TYPE_LABELS[alert.deviceType] ?? alert.deviceType)}
                         </span>
                         <span className="ml-auto text-[10px] font-semibold text-indigo-300 flex-shrink-0">
                           {alert.currentStock} / {alert.threshold}

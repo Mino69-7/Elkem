@@ -1249,7 +1249,7 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 **Logique par onglet**
 | Onglet | Condition de notification | Disparaît quand |
 |---|---|---|
-| Inventaire | `alert.isActive && alert.triggered && (jamais vu OU currentStock < stockAtView)` | Clic sur une carte de modèle de ce type |
+| Inventaire | `alert.isActive && alert.triggered && (jamais vu OU currentStock < stockAtView)` | Clic sur la carte du modèle concerné (granularité par modelId — voir Phase 25) |
 | Maintenance | Device avec `maintenanceDeadline < now` et non vu | Clic sur la ligne du device |
 | Déchets | Device retraité dont le modèle est encore `isActive` dans le catalogue et non vu | Clic sur la ligne du device |
 
@@ -1257,6 +1257,8 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 - `Stock.tsx` : badges count (glass indigo) sur chaque onglet + point violet par carte/ligne concernée
 - `Sidebar.tsx` : badge `totalCount` (glass indigo) à droite de "Stock" — version expanded et collapsed
 - `TopBar.tsx` : cloche avec badge indigo + dropdown panel (`createPortal z-9999`) — 3 sections cliquables, chaque section navigue vers le bon onglet Stock via `navigate('/stock', { state: { tab } })`
+
+> ⚠️ La granularité inventaire et les alertes par modèle ont été refactorisées en Phase 25 — voir ci-dessous.
 
 **Règle design — pastilles de notification**
 - **JAMAIS d'amber/jaune** pour les pastilles de notification — violets/indigo uniquement
@@ -1280,6 +1282,131 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 
 ---
 
+### ✅ Phase 25 — Alertes stock par modèle, notifications corrigées & UX contextuelle (2026-04-20)
+
+#### 1. Alertes stock par modèle — full stack
+
+**Problème** : les règles d'alerte ne s'appliquaient qu'au niveau du type d'appareil. Impossible de fixer un seuil spécifique à un modèle (ex : Dell Pro 14 < 5).
+
+**Migration Prisma** `20260420000000_add_model_id_to_stock_alert` :
+```sql
+ALTER TABLE "StockAlert" ADD COLUMN "deviceModelId" TEXT;
+ALTER TABLE "StockAlert" ADD CONSTRAINT "StockAlert_deviceModelId_fkey"
+  FOREIGN KEY ("deviceModelId") REFERENCES "DeviceModel"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+CREATE INDEX "StockAlert_deviceModelId_idx" ON "StockAlert"("deviceModelId");
+```
+`DeviceModel` reçoit `stockAlerts StockAlert[]` en retour.
+
+**Backend** `stockAlert.controller.ts` :
+- `listAlerts` : compte le stock par type ET par modelId, inclut la relation `deviceModel`
+- `createAlert` : accepte `deviceModelId` optionnel, upsert intelligent (cherche alerte existante par `deviceModelId` ou `deviceType + deviceModelId IS NULL`)
+- Toutes les réponses incluent `deviceModel: { id, brand, name, type }`
+
+**Frontend** `Orders.tsx` — onglet Règles d'alerte :
+- Sentinel `MODEL_ALL = '__ALL__'` (jamais `value=""` — crash Radix UI)
+- Dropdown modèle filtré par type sélectionné, reset à `MODEL_ALL` à chaque changement de type
+- Query key `['device-models']` + `/devicemodels` (actifs uniquement — ne pas confondre avec `['device-models-all']` + `/devicemodels/all`)
+- Rendu en deux sections distinctes : "Par type d'appareil" et "Par modèle" avec badge indigo
+- `handleAdd` : `deviceModelId: addingModelId === MODEL_ALL ? null : addingModelId`
+
+---
+
+#### 2. Granularité notifications inventaire — par modelId (refacto Phase 24)
+
+**Bug** : cliquer sur un modèle Dell Pro 14 faisait disparaître les pastilles de **tous** les modèles du même type.
+
+**Cause** : `viewedInventaireAlerts` était indexé par `deviceType` → `markInventaireAlertViewed(model.type, ...)` marquait tout le type comme vu.
+
+**Fix** :
+- `uiStore.ts` : `viewedInventaireAlerts: Record<string, number>` (clé=type) → **`viewedInventaireModels: Record<string, number>`** (clé=modelId)
+- Action renommée `markInventaireAlertViewed` → **`markInventaireModelViewed(modelId, inStock)`**
+- `Stock.tsx` : click handler → `markInventaireModelViewed(model.id, model.inStock)` ; hasNotif → `unviewedInventaireModelIds.has(model.id)`
+- `useStockNotifications.ts` : fetche `['stock-summary']` pour avoir les modèles par type ; calcule `unviewedInventaireModelIds: Set<string>` (granularité modelId) ; expose `unviewedModelsWithStock: { id, inStock }[]`
+
+**Logique de l'alerte par modèle dans le hook** :
+```typescript
+const candidates = alert.deviceModelId
+  ? stockSummary.filter((m) => m.id === alert.deviceModelId)   // alerte par modèle
+  : stockSummary.filter((m) => m.type === alert.deviceType);   // alerte par type
+
+for (const model of candidates) {
+  const seenAt = viewedInventaireModels[model.id];
+  if (seenAt === undefined || model.inStock < seenAt) {
+    unviewedInventaireModelIds.add(model.id);
+  }
+}
+```
+
+---
+
+#### 3. Pastilles bloquées après création/modification d'alerte
+
+**Problème** : si l'utilisateur avait cliqué sur un modèle (ex : Dell Pro 14, stock=1) avant la création d'une alerte, `viewedInventaireModels["id"] = 1` était posé. Après création de l'alerte avec seuil=5 : `1 < 1 = false` → aucune notification, même si le stock est sous le seuil.
+
+**Fix** — `uiStore.ts` :
+```typescript
+clearInventaireModelsViewed: (modelIds: string[]) =>
+  set((s) => {
+    const next = { ...s.viewedInventaireModels };
+    modelIds.forEach((id) => delete next[id]);
+    return { viewedInventaireModels: next };
+  }),
+```
+
+**Câblage** `Orders.tsx` `TabAlerts` :
+- `upsertAlertMut.onSuccess` : appelle `clearInventaireModelsViewed([modelId])` si alerte par modèle, ou `clearInventaireModelsViewed(ids de tous les modèles du type)` si alerte par type
+- `updateAlertMut.onSuccess` : si `variables.data.threshold !== undefined` → même clear → pastille réapparaît immédiatement si le stock est toujours sous le nouveau seuil
+
+---
+
+#### 4. Cloche notifications — corrections & bouton "Tout vider"
+
+**Bug** : les sous-lignes inventaire affichaient `DEVICE_TYPE_LABELS[alert.deviceType]` (ex : "PC Portable") même pour les alertes par modèle.
+- **Cause** : `StockAlertRow` dans `useStockNotifications.ts` n'avait pas le champ `deviceModel`.
+- **Fix** : ajout de `deviceModel: { id, brand, name, type } | null` à l'interface `StockAlertRow` du hook.
+- **Affichage corrigé** : `alert.deviceModel ? \`${brand} ${name}\` : DEVICE_TYPE_LABELS[type]`
+
+**Bouton corbeille dans le header du panel** :
+- Visible uniquement si `totalCount > 0`
+- Action `clearAllNotifications` :
+  - Inventaire : `unviewedModelsWithStock.forEach(({ id, inStock }) => markInventaireModelViewed(id, inStock))`
+  - Maintenance : `overdueDevices.forEach((d) => markMaintenanceDeviceViewed(d.id))`
+  - Déchets : `activeModelDevices.forEach((d) => markDechetsDeviceViewed(d.id))`
+- Style : fond rouge `rgba(239,68,68,0.08)`, hover `0.18`, icône `Trash2` rouge — cohérent avec le design glass
+
+---
+
+#### 5. Renommage des rôles — VIEWER → "Technicien Proximité"
+
+**Décision** : le rôle `VIEWER` (valeur DB inchangée) est renommé partout en "Technicien Proximité". Mêmes droits que TECHNICIAN, titre différent pour des attributions de tâches distinctes.
+
+| Rôle DB | Label affiché |
+|---|---|
+| `MANAGER` | Manager |
+| `TECHNICIAN` | Technicien |
+| `VIEWER` | **Technicien Proximité** |
+
+Fichiers mis à jour : `formatters.ts` (`ROLE_LABELS`), `Users.tsx` (filtre FilterPill + badge cartes), `Settings.tsx` (widget Mon compte), `Login.tsx` (comptes de test).
+
+---
+
+#### 6. DeviceDetail — boutons contextuels selon la page d'origine
+
+**Problème** : le bouton "Désaffecter" n'avait pas de sens depuis la page Stock (appareils sans utilisateur, en maintenance, en déchets).
+
+**Règle** : `backTo = location.state?.from` détermine les boutons affichés.
+
+| Origine (`backTo`) | Boutons |
+|---|---|
+| `/stock` | Assigner (si pas d'user) + Modifier + Trash2 icône (rouge, icon-only, `setDeleting`) |
+| `/devices` | Désaffecter (amber, `setDeleting`) + Modifier |
+
+- Le modal de déplacement (`setDeleting`) est **identique** dans les deux cas — seule l'apparence du déclencheur change.
+- Trash2 depuis Stock : `w-36px h-36px`, `border-radius:10px`, fond rouge `rgba(239,68,68,0.08)`, hover via `onMouseEnter/Leave`, `whileHover scale(1.05)`.
+- Depuis Stock, `Assigner` n'est visible que si `!device.assignedUser` (appareil sans utilisateur).
+
+---
+
 ## En attente
 
 - ⏳ App Registration Azure Entra ID (action admin IT Elkem requise)
@@ -1287,3 +1414,4 @@ Variables `.env` backend à renseigner : `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `
 - ⏳ Page Login : bouton Microsoft uniquement en mode SSO
 - ⏳ PWA polish (service worker, manifest, icônes complètes)
 - ⏳ Page Dashboard — révision finale
+- ⏳ Permissions VIEWER (Technicien Proximité) : restreindre création commande et modification règles d'alerte côté backend

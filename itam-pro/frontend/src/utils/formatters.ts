@@ -100,9 +100,9 @@ export type ElkemSite = typeof ELKEM_SITES[number]['code'];
 
 /** Labels rôles */
 export const ROLE_LABELS: Record<string, string> = {
-  MANAGER: 'Manager',
+  MANAGER:    'Manager',
   TECHNICIAN: 'Technicien',
-  VIEWER: 'Lecteur',
+  VIEWER:     'Technicien Proximité',
 };
 
 /** Labels actions audit */

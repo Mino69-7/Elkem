@@ -2,33 +2,44 @@ import cron from 'node-cron';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../lib/logger.js';
 
-/**
- * Vérifie les seuils de stock toutes les heures.
- * Log une alerte pour chaque type d'appareil dont le stock est sous le seuil configuré.
- */
 export function startStockAlertJob() {
-  // Toutes les heures, à la minute 0
   cron.schedule('0 * * * *', async () => {
     logger.info('[CRON] Vérification des alertes de stock…');
 
     try {
-      const alerts = await prisma.stockAlert.findMany({ where: { isActive: true } });
+      const alerts = await prisma.stockAlert.findMany({
+        where:   { isActive: true },
+        include: { deviceModel: { select: { brand: true, name: true } } },
+      });
       if (!alerts.length) return;
 
-      const stockCounts = await prisma.device.groupBy({
+      const stockByType = await prisma.device.groupBy({
         by: ['type'],
         where: { status: 'IN_STOCK' },
         _count: { type: true },
       });
-      const stockMap = Object.fromEntries(stockCounts.map((s) => [s.type, s._count.type]));
+      const typeStockMap = Object.fromEntries(stockByType.map((s) => [s.type, s._count.type]));
+
+      const stockByModel = await prisma.device.groupBy({
+        by: ['modelId'],
+        where: { status: 'IN_STOCK', modelId: { not: null } },
+        _count: { modelId: true },
+      });
+      const modelStockMap: Record<string, number> = Object.fromEntries(
+        stockByModel.filter((s) => s.modelId != null).map((s) => [s.modelId!, s._count.modelId])
+      );
 
       let triggered = 0;
       for (const alert of alerts) {
-        const current = stockMap[alert.deviceType] ?? 0;
+        const current = alert.deviceModelId
+          ? (modelStockMap[alert.deviceModelId] ?? 0)
+          : (typeStockMap[alert.deviceType] ?? 0);
+
         if (current < alert.threshold) {
-          logger.warn(
-            `[STOCK ALERT] ${alert.deviceType} : ${current} en stock (seuil : ${alert.threshold})`
-          );
+          const label = alert.deviceModel
+            ? `${alert.deviceModel.brand} ${alert.deviceModel.name}`
+            : alert.deviceType;
+          logger.warn(`[STOCK ALERT] ${label} : ${current} en stock (seuil : ${alert.threshold})`);
           triggered++;
         }
       }

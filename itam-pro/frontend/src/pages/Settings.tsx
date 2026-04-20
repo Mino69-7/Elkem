@@ -60,7 +60,7 @@ export default function Settings() {
           {[
             { label: 'Nom',   value: user?.displayName },
             { label: 'Email', value: user?.email },
-            { label: 'Rôle',  value: user?.role === 'MANAGER' ? 'Manager' : user?.role === 'TECHNICIAN' ? 'Technicien' : 'Lecteur' },
+            { label: 'Rôle',  value: user?.role === 'MANAGER' ? 'Manager' : user?.role === 'TECHNICIAN' ? 'Technicien' : 'Technicien Proximité' },
           ].map((row) => (
             <div key={row.label} className="flex justify-between py-2 border-b border-[var(--border-glass)] last:border-0">
               <span className="text-xs text-[var(--text-muted)]">{row.label}</span>

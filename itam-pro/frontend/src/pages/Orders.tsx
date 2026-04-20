@@ -18,6 +18,7 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { AppSelect } from '../components/ui/AppSelect';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useAuthStore } from '../stores/authStore';
+import { useUIStore } from '../stores/uiStore';
 import api from '../services/api';
 import { usePurchaseOrders, useOrderHistory, useCreateOrder, useCancelOrder, useReceiveDevice } from '../hooks/usePurchaseOrders';
 import { DEVICE_TYPE_LABELS, KEYBOARD_LAYOUT_LABELS, formatDate } from '../utils/formatters';
@@ -29,6 +30,8 @@ import type { POFormData, ReceiveDeviceData } from '../services/purchaseOrder.se
 interface StockAlertRow {
   id: string;
   deviceType: DeviceType;
+  deviceModelId: string | null;
+  deviceModel: { id: string; brand: string; name: string; type: DeviceType } | null;
   threshold: number;
   isActive: boolean;
   currentStock: number;
@@ -1013,17 +1016,23 @@ function TabCatalogue({ isManager }: { isManager: boolean }) {
   );
 }
 
+// Sentinel pour "aucun modèle sélectionné" dans AppSelect — Radix UI interdit value=""
+const MODEL_ALL = '__ALL__';
+
 // ─── Onglet Règles d'alerte ────────────────────────────────────
 
 function TabAlerts({ isManager }: { isManager: boolean }) {
   const qc = useQueryClient();
+  const { clearInventaireModelsViewed } = useUIStore();
 
   const [addingType,      setAddingType]      = useState<DeviceType | ''>('');
+  // '__ALL__' = alerte par type (aucun modèle spécifique) — jamais ''
+  const [addingModelId,   setAddingModelId]   = useState<string>(MODEL_ALL);
   const [addingThreshold, setAddingThreshold] = useState(3);
 
   const alertsApi = {
     list:   () => api.get<StockAlertRow[]>('/stockalerts').then((r) => r.data),
-    upsert: (d: { deviceType: DeviceType; threshold: number; isActive: boolean }) =>
+    upsert: (d: { deviceType: DeviceType; deviceModelId: string | null; threshold: number; isActive: boolean }) =>
       api.post('/stockalerts', d).then((r) => r.data),
     update: (id: string, d: Partial<{ threshold: number; isActive: boolean }>) =>
       api.put(`/stockalerts/${id}`, d).then((r) => r.data),
@@ -1034,27 +1043,188 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
     queryKey: ['stockalerts'], queryFn: alertsApi.list, staleTime: 30_000,
   });
 
+  // Modèles actifs — même clé que le catalogue pour bénéficier du cache
+  const { data: activeModels = [] } = useQuery<DeviceModel[]>({
+    queryKey: ['device-models'],
+    queryFn:  () => api.get<DeviceModel[]>('/devicemodels').then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  // Modèles filtrés par le type sélectionné
+  const modelsForType = useMemo(
+    () => (addingType ? activeModels.filter((m) => m.type === addingType) : []),
+    [activeModels, addingType]
+  );
+
+  // IDs de modèles déjà couverts par une alerte par-modèle
+  const alertedModelIds = useMemo(
+    () => new Set(alerts.filter((a) => a.deviceModelId).map((a) => a.deviceModelId!)),
+    [alerts]
+  );
+  // Types déjà couverts par une alerte "par type" (deviceModelId = null)
+  const alertedTypes = useMemo(
+    () => new Set(alerts.filter((a) => !a.deviceModelId).map((a) => a.deviceType)),
+    [alerts]
+  );
+
   const upsertAlertMut = useMutation({
     mutationFn: alertsApi.upsert,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['stockalerts'] }); setAddingType(''); setAddingThreshold(3); },
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      // Clear viewed state so pastilles réapparaissent immédiatement si stock sous seuil
+      if (variables.deviceModelId) {
+        clearInventaireModelsViewed([variables.deviceModelId]);
+      } else {
+        // Alerte par type → effacer tous les modèles de ce type
+        const ids = activeModels.filter((m) => m.type === variables.deviceType).map((m) => m.id);
+        if (ids.length) clearInventaireModelsViewed(ids);
+      }
+      setAddingType('');
+      setAddingModelId(MODEL_ALL);
+      setAddingThreshold(3);
+    },
   });
   const updateAlertMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<{ threshold: number; isActive: boolean }> }) => alertsApi.update(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['stockalerts'] }),
+    mutationFn: ({ id, data }: { id: string; data: Partial<{ threshold: number; isActive: boolean }> }) =>
+      alertsApi.update(id, data),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: ['stockalerts'] });
+      // Si le seuil change, réinitialiser l'état vu pour que les pastilles se mettent à jour
+      if (variables.data.threshold !== undefined) {
+        const alert = alerts.find((a) => a.id === variables.id);
+        if (alert) {
+          if (alert.deviceModelId) {
+            clearInventaireModelsViewed([alert.deviceModelId]);
+          } else {
+            const ids = activeModels.filter((m) => m.type === alert.deviceType).map((m) => m.id);
+            if (ids.length) clearInventaireModelsViewed(ids);
+          }
+        }
+      }
+    },
   });
   const deleteAlertMut = useMutation({
     mutationFn: alertsApi.remove,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['stockalerts'] }),
   });
 
-  const existingAlertTypes = new Set(alerts.map((a) => a.deviceType));
-  const availableAlertTypes = ALL_TYPES.filter((t) => !existingAlertTypes.has(t));
   const triggeredCount = alerts.filter((a) => a.triggered && a.isActive).length;
+  const typeAlerts      = alerts.filter((a) => !a.deviceModelId);
+  const modelAlerts     = alerts.filter((a) =>  !!a.deviceModelId);
+
+  const handleAdd = () => {
+    if (!addingType) return;
+    upsertAlertMut.mutate({
+      deviceType:    addingType as DeviceType,
+      // MODEL_ALL = pas de modèle spécifique → null côté backend
+      deviceModelId: addingModelId === MODEL_ALL ? null : addingModelId,
+      threshold:     addingThreshold,
+      isActive:      true,
+    });
+  };
+
+  const handleTypeChange = (type: string) => {
+    setAddingType(type as DeviceType);
+    setAddingModelId(MODEL_ALL); // reset modèle à chaque changement de type
+  };
+
+  const canAdd = !!addingType && !upsertAlertMut.isPending;
+
+  // Options du dropdown modèle — MODEL_ALL en premier, JAMAIS value=""
+  const modelOptions = useMemo(() => [
+    { value: MODEL_ALL, label: 'Tous les modèles' },
+    ...modelsForType
+      .filter((m) => !alertedModelIds.has(m.id))
+      .map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` })),
+  ], [modelsForType, alertedModelIds]);
+
+  const renderAlertRow = (alert: StockAlertRow, i: number) => {
+    const Icon = TYPE_ICONS[alert.deviceType] ?? HelpCircle;
+    const label = alert.deviceModel
+      ? `${alert.deviceModel.brand} ${alert.deviceModel.name}`
+      : DEVICE_TYPE_LABELS[alert.deviceType];
+
+    return (
+      <motion.div
+        key={alert.id}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
+        className="px-4 py-3 flex items-center gap-3"
+      >
+        <div className={clsx(
+          'w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0',
+          alert.triggered && alert.isActive ? 'bg-amber-500/15 text-amber-400' : 'bg-primary/10 text-primary'
+        )}>
+          <Icon size={16} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{label}</p>
+            {alert.deviceModel && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/10 text-indigo-400 flex-shrink-0">
+                par modèle
+              </span>
+            )}
+            {alert.triggered && alert.isActive && (
+              <span className="flex items-center gap-1 text-[10px] text-amber-400 flex-shrink-0">
+                <AlertTriangle size={10} /> Sous le seuil
+              </span>
+            )}
+            {!alert.triggered && alert.isActive && (
+              <span className="flex items-center gap-1 text-[10px] text-emerald-400 flex-shrink-0">
+                <CheckCircle size={10} /> OK
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            {alert.deviceModel && (
+              <span className="mr-1.5 opacity-60">{DEVICE_TYPE_LABELS[alert.deviceType]} ·</span>
+            )}
+            Stock actuel : <span className="font-medium text-[var(--text-secondary)]">{alert.currentStock}</span>
+            {' '}· Seuil : <span className="font-medium text-[var(--text-secondary)]">{alert.threshold}</span>
+          </p>
+        </div>
+
+        {isManager && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => updateAlertMut.mutate({ id: alert.id, data: { isActive: !alert.isActive } })}
+              className={clsx(
+                'text-xs px-2.5 py-1 rounded-lg font-medium transition-colors',
+                alert.isActive
+                  ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                  : 'bg-slate-500/15 text-slate-400 hover:bg-slate-500/25'
+              )}
+            >
+              {alert.isActive ? 'Actif' : 'Inactif'}
+            </button>
+            <input
+              type="number" defaultValue={alert.threshold} min={0} max={999}
+              className="input-glass w-16 py-1 text-xs text-center"
+              onBlur={(e) => {
+                const val = parseInt(e.target.value);
+                if (!isNaN(val) && val !== alert.threshold)
+                  updateAlertMut.mutate({ id: alert.id, data: { threshold: val } });
+              }}
+            />
+            <button
+              onClick={() => deleteAlertMut.mutate(alert.id)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        )}
+      </motion.div>
+    );
+  };
 
   return (
     <div className="max-w-2xl">
       <GlassCard padding="none">
-        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-[var(--border-glass)]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 flex-wrap px-4 pt-4 pb-3 border-b border-[var(--border-glass)]">
           <div className="flex items-center gap-2">
             <Bell size={16} className="text-primary" />
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Alertes de stock</h2>
@@ -1067,57 +1237,97 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
           <p className="text-xs text-[var(--text-muted)]">Alerte quand le stock descend sous le seuil</p>
         </div>
 
-        <div className="divide-y divide-[var(--border-glass)]">
-          {isLoading
-            ? Array.from({ length: 3 }).map((_, i) => <div key={i} className="px-4 py-3"><Skeleton className="h-8 w-full" /></div>)
-            : alerts.length === 0
-              ? <p className="px-4 py-6 text-sm text-[var(--text-muted)] text-center">Aucune alerte configurée</p>
-              : alerts.map((alert, i) => {
-                  const Icon = TYPE_ICONS[alert.deviceType] ?? HelpCircle;
-                  return (
-                    <motion.div key={alert.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="px-4 py-3 flex items-center gap-3">
-                      <div className={clsx('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', alert.triggered && alert.isActive ? 'bg-amber-500/15 text-amber-400' : 'bg-primary/10 text-primary')}>
-                        <Icon size={16} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-[var(--text-primary)]">{DEVICE_TYPE_LABELS[alert.deviceType]}</p>
-                          {alert.triggered && alert.isActive && <span className="flex items-center gap-1 text-[10px] text-amber-400"><AlertTriangle size={10} /> Sous le seuil</span>}
-                          {!alert.triggered && alert.isActive && <span className="flex items-center gap-1 text-[10px] text-emerald-400"><CheckCircle size={10} /> OK</span>}
-                        </div>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          Stock actuel : <span className="font-medium text-[var(--text-secondary)]">{alert.currentStock}</span> · Seuil : <span className="font-medium text-[var(--text-secondary)]">{alert.threshold}</span>
-                        </p>
-                      </div>
-                      {isManager && (
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <button onClick={() => updateAlertMut.mutate({ id: alert.id, data: { isActive: !alert.isActive } })} className={clsx('text-xs px-2.5 py-1 rounded-lg font-medium transition-colors', alert.isActive ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-slate-500/15 text-slate-400 hover:bg-slate-500/25')}>
-                            {alert.isActive ? 'Actif' : 'Inactif'}
-                          </button>
-                          <input type="number" defaultValue={alert.threshold} min={0} max={999} className="input-glass w-16 py-1 text-xs text-center"
-                            onBlur={(e) => { const val = parseInt(e.target.value); if (!isNaN(val) && val !== alert.threshold) updateAlertMut.mutate({ id: alert.id, data: { threshold: val } }); }}
-                          />
-                          <button onClick={() => deleteAlertMut.mutate(alert.id)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })
-          }
-        </div>
+        {/* Skeleton initial */}
+        {isLoading && (
+          <div className="divide-y divide-[var(--border-glass)]">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="px-4 py-3"><Skeleton className="h-8 w-full" /></div>
+            ))}
+          </div>
+        )}
 
-        {isManager && availableAlertTypes.length > 0 && (
-          <div className="px-4 py-3 border-t border-[var(--border-glass)] flex items-center gap-3">
-            <Package size={16} className="text-[var(--text-muted)] flex-shrink-0" />
-            <div className="flex-1">
-              <AppSelect value={addingType} onChange={(v) => setAddingType(v as DeviceType)} options={availableAlertTypes.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] }))} placeholder="Choisir un type…" />
+        {/* Aucune alerte */}
+        {!isLoading && alerts.length === 0 && (
+          <p className="px-4 py-6 text-sm text-[var(--text-muted)] text-center">Aucune alerte configurée</p>
+        )}
+
+        {/* Alertes par type */}
+        {!isLoading && typeAlerts.length > 0 && (
+          <div>
+            <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+              Par type d'appareil
+            </p>
+            <div className="divide-y divide-[var(--border-glass)]">
+              {typeAlerts.map((alert, i) => renderAlertRow(alert, i))}
             </div>
-            <input type="number" value={addingThreshold} min={1} max={999} onChange={(e) => setAddingThreshold(parseInt(e.target.value) || 1)} className="input-glass w-16 py-1.5 text-xs text-center" />
-            <button disabled={!addingType || upsertAlertMut.isPending} onClick={() => addingType && upsertAlertMut.mutate({ deviceType: addingType as DeviceType, threshold: addingThreshold, isActive: true })} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-50">
-              <Plus size={13} /> Ajouter
-            </button>
+          </div>
+        )}
+
+        {/* Alertes par modèle */}
+        {!isLoading && modelAlerts.length > 0 && (
+          <div className={clsx(typeAlerts.length > 0 && 'border-t border-[var(--border-glass)]')}>
+            <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+              Par modèle
+            </p>
+            <div className="divide-y divide-[var(--border-glass)]">
+              {modelAlerts.map((alert, i) => renderAlertRow(alert, typeAlerts.length + i))}
+            </div>
+          </div>
+        )}
+
+        {/* Formulaire d'ajout */}
+        {isManager && (
+          <div className="px-4 py-3 border-t border-[var(--border-glass)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <Package size={15} className="text-[var(--text-muted)] flex-shrink-0" />
+
+              {/* Type */}
+              <div className="w-40 flex-shrink-0">
+                <AppSelect
+                  value={addingType}
+                  onChange={handleTypeChange}
+                  options={ALL_TYPES.map((t) => ({ value: t, label: DEVICE_TYPE_LABELS[t] }))}
+                  placeholder="Type…"
+                />
+              </div>
+
+              {/* Modèle — visible uniquement si le type a des modèles actifs */}
+              {addingType && modelsForType.length > 0 && (
+                <div className="w-52 flex-shrink-0">
+                  {/* RÈGLE ABSOLUE : jamais value="" dans AppSelect → sentinel MODEL_ALL */}
+                  <AppSelect
+                    value={addingModelId}
+                    onChange={(v) => setAddingModelId(v)}
+                    options={modelOptions}
+                    placeholder="Modèle (optionnel)"
+                  />
+                </div>
+              )}
+
+              {/* Avertissement type déjà couvert */}
+              {addingType && alertedTypes.has(addingType as DeviceType) && addingModelId === MODEL_ALL && (
+                <span className="text-[11px] text-amber-400 flex items-center gap-1 flex-shrink-0">
+                  <AlertTriangle size={11} /> Alerte type existante
+                </span>
+              )}
+
+              {/* Seuil */}
+              <input
+                type="number"
+                value={addingThreshold}
+                min={1} max={999}
+                onChange={(e) => setAddingThreshold(parseInt(e.target.value) || 1)}
+                className="input-glass w-16 py-1.5 text-xs text-center flex-shrink-0"
+              />
+
+              <button
+                disabled={!canAdd}
+                onClick={handleAdd}
+                className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-50 flex-shrink-0"
+              >
+                <Plus size={13} /> Ajouter
+              </button>
+            </div>
           </div>
         )}
       </GlassCard>

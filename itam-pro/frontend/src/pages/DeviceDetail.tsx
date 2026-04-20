@@ -1618,48 +1618,91 @@ export default function DeviceDetail() {
 
         {canEdit && (
           <div className="sm:ml-auto flex items-center gap-2">
-            {!device.assignedUser && (
-              <button
-                onClick={() => setAssignOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-primary hover:border-primary/30 transition-colors"
-              >
-                <UserPlus size={14} />
-                Assigner
-              </button>
+            {backTo === '/stock' ? (
+              /* ── Depuis Stock : Assigner + Modifier + Trash2 ── */
+              <>
+                {!device.assignedUser && (
+                  <button
+                    onClick={() => setAssignOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-primary hover:border-primary/30 transition-colors"
+                  >
+                    <UserPlus size={14} />
+                    Assigner
+                  </button>
+                )}
+                <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm btn-secondary">
+                  <Pencil size={14} />
+                  Modifier
+                </button>
+                <motion.button
+                  onClick={() => setDeleting(true)}
+                  whileHover={{ scale: 1.05, boxShadow: '0 4px 16px rgba(239,68,68,0.30)' }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 36, mass: 0.72 }}
+                  title="Déplacer / retirer l'appareil"
+                  className="group"
+                  style={{
+                    width: 36, height: 36,
+                    borderRadius: 10,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    backdropFilter: 'var(--blur)',
+                    WebkitBackdropFilter: 'var(--blur)',
+                    background: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    color: 'rgba(248,113,113,0.85)',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.background = 'rgba(239,68,68,0.20)';
+                    el.style.color = 'rgb(248,113,113)';
+                  }}
+                  onMouseLeave={(e) => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.background = 'rgba(239,68,68,0.08)';
+                    el.style.color = 'rgba(248,113,113,0.85)';
+                  }}
+                >
+                  <Trash2 size={14} />
+                </motion.button>
+              </>
+            ) : (
+              /* ── Depuis Appareils : Désaffecter + Modifier ── */
+              <>
+                <motion.button
+                  onClick={() => setDeleting(true)}
+                  whileHover={{ scale: 1.03, boxShadow: '0 4px 20px rgba(245,158,11,0.38), inset 0 1px 0 rgba(255,255,255,0.22)' }}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 36, mass: 0.72 }}
+                  className="group relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl overflow-hidden"
+                  style={{
+                    backdropFilter: 'var(--blur)',
+                    WebkitBackdropFilter: 'var(--blur)',
+                    background: 'rgba(245,158,11,0.08)',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    borderColor: 'rgba(245,158,11,0.30)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span
+                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+                    style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)' }}
+                    aria-hidden="true"
+                  />
+                  <span className="relative z-10 flex items-center gap-1.5 text-amber-400 group-hover:text-white transition-colors duration-200">
+                    <UserMinus size={14} />
+                    Désaffecter
+                  </span>
+                </motion.button>
+                <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm btn-secondary">
+                  <Pencil size={14} />
+                  Modifier
+                </button>
+              </>
             )}
-            <motion.button
-              onClick={() => setDeleting(true)}
-              whileHover={{ scale: 1.03, boxShadow: '0 4px 20px rgba(245,158,11,0.38), inset 0 1px 0 rgba(255,255,255,0.22)' }}
-              whileTap={{ scale: 0.97 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 36, mass: 0.72 }}
-              className="group relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl overflow-hidden"
-              style={{
-                backdropFilter: 'var(--blur)',
-                WebkitBackdropFilter: 'var(--blur)',
-                background: 'rgba(245,158,11,0.08)',
-                borderWidth: '1px',
-                borderStyle: 'solid',
-                borderColor: 'rgba(245,158,11,0.30)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
-                cursor: 'pointer',
-              }}
-            >
-              {/* Gradient orange — apparaît en hover */}
-              <span
-                className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
-                style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)' }}
-                aria-hidden="true"
-              />
-              {/* Contenu */}
-              <span className="relative z-10 flex items-center gap-1.5 text-amber-400 group-hover:text-white transition-colors duration-200">
-                <UserMinus size={14} />
-                Désaffecter
-              </span>
-            </motion.button>
-            <button onClick={() => setFormOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm btn-secondary">
-              <Pencil size={14} />
-              Modifier
-            </button>
           </div>
         )}
       </div>

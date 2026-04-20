@@ -246,7 +246,7 @@ export default function Login() {
                   {[
                     { email: 'manager@elkem.com', role: 'Manager' },
                     { email: 'tech@elkem.com', role: 'Technicien' },
-                    { email: 'viewer@elkem.com', role: 'Lecteur' },
+                    { email: 'viewer@elkem.com', role: 'Technicien Proximité' },
                   ].map((account) => (
                     <button
                       key={account.email}

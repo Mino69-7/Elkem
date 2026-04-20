@@ -56,8 +56,8 @@ function TabInventaire() {
   const navigate = useNavigate();
   const [viewMode, setViewMode]         = useState<'grid' | 'list'>('grid');
   const [selectedModel, setSelectedModel] = useState<ModelStock | null>(null);
-  const { unviewedAlertTypes } = useStockNotifications();
-  const { markInventaireAlertViewed } = useUIStore();
+  const { unviewedInventaireModelIds } = useStockNotifications();
+  const { markInventaireModelViewed } = useUIStore();
 
   const { data: modelStock = [], isLoading: loadingModels } = useQuery<ModelStock[]>({
     queryKey: ['stock-summary'],
@@ -277,7 +277,7 @@ function TabInventaire() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {models.map((model, i) => {
                       const isEmpty = model.inStock === 0;
-                      const hasNotif = unviewedAlertTypes.has(model.type);
+                      const hasNotif = unviewedInventaireModelIds.has(model.id);
                       return (
                         <motion.div
                           key={model.id}
@@ -285,7 +285,7 @@ function TabInventaire() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: i * 0.04 }}
                           onClick={() => {
-                            markInventaireAlertViewed(model.type, model.inStock);
+                            markInventaireModelViewed(model.id, model.inStock);
                             setSelectedModel(model);
                           }}
                           className="cursor-pointer relative"
@@ -393,7 +393,7 @@ function TabInventaire() {
                           <tbody>
                             {models.map((model, i) => {
                               const isEmpty = model.inStock === 0;
-                              const hasNotif = unviewedAlertTypes.has(model.type);
+                              const hasNotif = unviewedInventaireModelIds.has(model.id);
                               return (
                                 <motion.tr
                                   key={model.id}
@@ -401,7 +401,7 @@ function TabInventaire() {
                                   animate={{ opacity: 1 }}
                                   transition={{ delay: i * 0.02 }}
                                   onClick={() => {
-                                    markInventaireAlertViewed(model.type, model.inStock);
+                                    markInventaireModelViewed(model.id, model.inStock);
                                     setSelectedModel(model);
                                   }}
                                   className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
