@@ -1,30 +1,16 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileNav from './MobileNav';
 import { useUIStore } from '../../stores/uiStore';
-import { Skeleton } from '../ui/Skeleton';
-
-function PageLoader() {
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <Skeleton className="h-8 w-64" />
-      <Skeleton className="h-4 w-full" />
-      <Skeleton className="h-4 w-3/4" />
-      <div className="grid grid-cols-4 gap-4 mt-4">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-32 rounded-2xl" />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function AppShell() {
-  const location = useLocation();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
+  // Le preload de tous les chunks est garanti terminé avant que ce composant
+  // monte : ProtectedRoute bloque sur AppLoadingSplash tant que preloadAllRoutes
+  // n'est pas résolu. Donc ici, aucun Suspense fallback ne peut plus flasher.
 
   return (
     /* ─── Root : padding crée l'espace flottant autour de tout ─ */
@@ -71,20 +57,27 @@ export default function AppShell() {
 
         <main
           className="flex-1 overflow-y-auto overflow-x-hidden pb-16 lg:pb-0 lg:rounded-[20px]"
+          style={{ scrollbarGutter: 'stable' }}
           id="main-content"
           aria-label="Contenu principal"
         >
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.15 }}
-            className="h-full"
-          >
-            <Suspense fallback={<PageLoader />}>
-              <Outlet />
-            </Suspense>
-          </motion.div>
+          {/*
+            ⚠ PAS de motion.div ici.
+            - Un wrapper animé crée un stacking context (transform) → seam
+              GPU sur les .glass-card enfants à chaque navigation.
+            - Une SPA doit naviguer INSTANTANÉMENT. Les chunks sont preloadés
+              (useRoutePreload) → la page suivante est déjà en mémoire.
+            Rendu direct = zéro flash, zéro compositor artifact, zéro latence.
+          */}
+          {/*
+            v7_startTransition sur BrowserRouter → React garde l'ancienne page
+            visible pendant la transition. Le fallback ici ne devrait JAMAIS
+            s'afficher à la navigation (startTransition supprime le Suspense
+            pendant les transitions). On met null comme filet de sécurité.
+          */}
+          <Suspense fallback={null}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

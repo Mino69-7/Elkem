@@ -734,8 +734,8 @@ export default function Devices() {
               ? Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="glass-card p-4 h-40 animate-pulse" style={{ background: 'var(--bg-glass)' }} />
                 ))
-              : devices.map((d, i) => (
-                  <DeviceCard key={d.id} device={d} index={i} onEdit={openEdit} onDelete={setDeleting} />
+              : devices.map((d) => (
+                  <DeviceCard key={d.id} device={d} onEdit={openEdit} onDelete={setDeleting} />
                 ))
             }
           </div>

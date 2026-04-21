@@ -33,6 +33,13 @@ export default function Login() {
     resolver: zodResolver(loginSchema),
   });
 
+  // AUCUN preload de chunks pré-authentification.
+  // Les chunks chargés dépendent du rôle de l'utilisateur (routes accessibles),
+  // qu'on ne connaît pas tant que /auth/login n'a pas répondu. Charger en
+  // anticipé sur /login = gaspillage de bande passante + risque de charger
+  // du code auquel l'utilisateur n'a pas droit.
+  // Le preload démarre dans ProtectedRoute dès que isAuthenticated = true.
+
   const onLocalSubmit = async (data: LoginFormData) => {
     setLoginError(null);
     try {

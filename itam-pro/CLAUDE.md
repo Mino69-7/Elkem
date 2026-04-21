@@ -698,6 +698,10 @@ Toutes les queries Stock ont `staleTime: 0` + `refetchOnMount: true` pour fraîc
 - **Swap device dans Devices.tsx** : `swapMut` → 3 appels séquentiels : `DELETE /devices/{oldId}` `{status:'IN_STOCK'}` + `PATCH /devices/{newId}/assign` + `PUT /devices/{newId}`. Le `handleSubmit` vérifie `data.swappedDeviceId` pour décider entre swap et update normal.
 - **DeviceForm hostname en édition** : `readOnly={isEdit}` — se met à jour via `setValue` si swap mais non éditable manuellement.
 - **DeviceForm SN non-workstation en édition** : `readOnly={isEdit}` (SMARTPHONE, TABLET, MONITOR, etc.).
+- **SPA navigation flash** : React.lazy() throw toujours une Promise au 1er rendu même si chunk en cache → fix = `future={{ v7_startTransition: true }}` sur `BrowserRouter` + `fallback={null}` sur Suspense AppShell. Ne jamais retirer ces deux éléments.
+- **routePreload.ts** (`frontend/src/utils/`) : charge tous les 9 chunks en parallèle pendant le splash. Mémoïsé. Appelé dans `ProtectedRoute` de `App.tsx`.
+- **dataPreload.ts** (`frontend/src/utils/`) : pré-chauffe le cache TanStack Query pendant le splash (`stats`, `stock-summary`, `stockalerts`, `maintenance-devices`, `retired-devices`, `device-models`). Nécessite `setSharedQueryClient(queryClient)` dans `main.tsx` avant usage. Fail-open.
+- **Animations par-item interdites** : ne jamais mettre `motion.tr`/`motion.div` avec `initial: opacity 0` sur des éléments dans un `.map()` — stagger déclenché à chaque montage = flash visible. Utiliser des `<tr>`/`<div>` plain à la place.
 
 ---
 
@@ -1404,6 +1408,73 @@ Fichiers mis à jour : `formatters.ts` (`ROLE_LABELS`), `Users.tsx` (filtre Filt
 - Le modal de déplacement (`setDeleting`) est **identique** dans les deux cas — seule l'apparence du déclencheur change.
 - Trash2 depuis Stock : `w-36px h-36px`, `border-radius:10px`, fond rouge `rgba(239,68,68,0.08)`, hover via `onMouseEnter/Leave`, `whileHover scale(1.05)`.
 - Depuis Stock, `Assigner` n'est visible que si `!device.assignedUser` (appareil sans utilisateur).
+
+---
+
+---
+
+### ✅ Phase 26 — Flash navigation SPA — fix définitif (2026-04-21)
+
+#### Diagnostic — cause racine du micro-flash
+
+Le flash "cards blanches / micro rafraichissement à droite" à chaque 1re navigation de page venait de **trois sources superposées** :
+
+1. **React.lazy() throw synchrone** — La cause principale. React.lazy() lance **toujours** une exception Promise au premier rendu, même si le chunk est déjà en cache (preloaded). Suspense affiche son fallback pour ~1-3 frames avant de reconnaître le chunk. Le preload réduit de 500ms à 3ms mais ne supprime pas le flash.
+
+2. **Animations mount par-item (`delay: i * X`)** — `motion.tr` / `motion.div` avec `initial: opacity 0` sur les `.map()` → à chaque premier montage de page, les lignes/cartes s'affichent en fondu décalé = "cards blanches" visibles.
+
+3. **Layout shift scrollbar** — Le scrollbar droit apparaît quand le contenu dépasse le viewport → reflow de ~16px → flash "à droite".
+
+#### Fix appliqué
+
+**`future={{ v7_startTransition: true }}` sur `BrowserRouter` (App.tsx)** — fix principal.
+Disponible depuis react-router-dom v6.8+ (projet en v6.26). Enveloppe toutes les navigations dans `startTransition` React 18 → React garde l'ancienne page visible jusqu'à ce que la nouvelle soit prête → le fallback Suspense n'est **jamais** montré pendant une transition.
+
+```tsx
+<BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+```
+
+**`fallback={null}` sur Suspense dans AppShell.tsx** — filet de sécurité. `PageLoader` skeleton supprimé.
+
+**`scrollbarGutter: 'stable'` sur `<main>`** — réserve l'espace du scrollbar en permanence, élimine le layout shift.
+
+**Suppression de toutes les animations mount par-item** :
+- `DeviceTable.tsx` : `motion.tr` → `<tr>`, prop `(device, i)` → `(device)`
+- `DeviceCard.tsx` : `motion.div` → `<div>`, prop `index` supprimée de l'interface et de l'appel dans `Devices.tsx`
+- `Stock.tsx` : progress bar `motion.div width:0→X%` → `<div style={{ width }}>`  + map `(model, i)` → `(model)`
+- `Orders.tsx` (PODetailDrawer) : `motion.div` stagger → `<div>`, `(device, i)` → `(device)`
+- `DeviceDetail.tsx` : `motion.div` stagger écrans moniteur → `<div>`
+
+**Préchauffage du cache TanStack Query pendant le splash** (`src/utils/dataPreload.ts` — nouveau fichier) :
+- Exporte `setSharedQueryClient(client)` — appelé dans `main.tsx` après création du QueryClient
+- Exporte `prefetchCriticalData()` — appelé dans `ProtectedRoute` en parallèle de `preloadCriticalRoutes()`
+- Pré-charge : `['stats']`, `['stock-summary']`, `['stockalerts']`, `['maintenance-devices']`, `['retired-devices']`, `['device-models']`
+- Fail-open : toute erreur réseau swallowée — le splash ne bloque jamais sur une requête API
+
+#### Règles à ne jamais enfreindre
+
+- **Ne jamais** ajouter `motion.tr` / `motion.div` avec `initial: opacity 0` sur des éléments rendus en `.map()` — le stagger s'exécute à chaque montage de page
+- **Ne jamais** retirer `future: { v7_startTransition: true }` de `BrowserRouter` — le flash revient immédiatement
+- **Ne jamais** remettre un `fallback` visible (skeleton) dans le `<Suspense>` d'AppShell — avec startTransition il ne devrait jamais s'afficher, mais si c'est un composant non-null il flasherait sur les rares cas de chunk manquant
+
+#### Fichiers créés / modifiés
+
+| Fichier | Changement |
+|---|---|
+| `frontend/src/App.tsx` | `BrowserRouter future` flags + import/appel `prefetchCriticalData` |
+| `frontend/src/components/layout/AppShell.tsx` | `fallback={null}` + `scrollbarGutter:stable` + suppression `PageLoader` |
+| `frontend/src/utils/dataPreload.ts` | **Nouveau** — `setSharedQueryClient` + `prefetchCriticalData` |
+| `frontend/src/main.tsx` | `setSharedQueryClient(queryClient)` après création client |
+| `frontend/src/components/devices/DeviceTable.tsx` | `motion.tr` → `<tr>` |
+| `frontend/src/components/devices/DeviceCard.tsx` | `motion.div` → `<div>`, prop `index` supprimée |
+| `frontend/src/pages/Devices.tsx` | Retrait prop `index` du call `<DeviceCard>` |
+| `frontend/src/pages/Stock.tsx` | Progress bar + `i` inutilisés supprimés |
+| `frontend/src/pages/Orders.tsx` | `motion.div` stagger drawer supprimé |
+| `frontend/src/pages/DeviceDetail.tsx` | `motion.div` stagger moniteur supprimé |
+
+#### CSS — bug ligne verticale (seam GPU) — résolu en amont
+
+`body::before` → couleur plate uniquement (sans gradient). `body::after` → gradients sur layer GPU promu (`transform: translate3d(0,0,0)` + `will-change: transform`). Pas de `contain: strict` (fragmente le paint). Défini dans `frontend/src/styles/liquid-glass.css`.
 
 ---
 

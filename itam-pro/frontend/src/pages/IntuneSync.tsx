@@ -252,12 +252,9 @@ AZURE_CLIENT_SECRET=your-client-secret`}
                         </td>
                       </tr>
                     )
-                    : filteredDevices.map((device, i) => (
-                        <motion.tr
+                    : filteredDevices.map((device) => (
+                        <tr
                           key={device.id}
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.01 }}
                           className="border-b border-[var(--border-glass)] hover:bg-white/[0.02] transition-colors"
                         >
                           <td className="px-4 py-3">
@@ -282,7 +279,7 @@ AZURE_CLIENT_SECRET=your-client-secret`}
                           <td className="px-4 py-3 hidden xl:table-cell text-xs text-[var(--text-muted)]">
                             {device.lastSyncDateTime ? formatDateTime(device.lastSyncDateTime) : '—'}
                           </td>
-                        </motion.tr>
+                        </tr>
                       ))
                 }
               </tbody>

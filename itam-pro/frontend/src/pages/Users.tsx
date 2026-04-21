@@ -121,15 +121,10 @@ export default function Users() {
         </GlassCard>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {users.map((u, i) => {
+          {users.map((u) => {
             const RoleIcon = ROLE_ICONS[u.role] ?? Eye;
             return (
-              <motion.div
-                key={u.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
+              <div key={u.id}>
                 <GlassCard padding="md" hoverable className={!u.isActive ? 'opacity-60' : undefined}>
                   <div className="flex items-start gap-3">
                     {/* Avatar */}
@@ -177,7 +172,7 @@ export default function Users() {
                     </span>
                   </div>
                 </GlassCard>
-              </motion.div>
+              </div>
             );
           })}
         </div>

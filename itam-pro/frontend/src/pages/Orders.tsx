@@ -535,14 +535,11 @@ function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string
         </GlassCard>
       ) : (
         <div className="space-y-3">
-          {orders.map((order, i) => {
+          {orders.map((order) => {
             const isClickable = order.receivedCount > 0;
             return (
-              <motion.div
+              <div
                 key={order.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.03 }}
                 onClick={() => isClickable && setSelectedOrderId(order.id)}
                 className={clsx(isClickable && 'cursor-pointer')}
               >
@@ -593,7 +590,7 @@ function TabOrders({ isManager, nextRef }: { isManager: boolean; nextRef: string
                     </div>
                   </div>
                 </GlassCard>
-              </motion.div>
+              </div>
             );
           })}
         </div>
@@ -1138,16 +1135,15 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
       .map((m) => ({ value: m.id, label: `${m.brand} ${m.name}` })),
   ], [modelsForType, alertedModelIds]);
 
-  const renderAlertRow = (alert: StockAlertRow, i: number) => {
+  const renderAlertRow = (alert: StockAlertRow) => {
     const Icon = TYPE_ICONS[alert.deviceType] ?? HelpCircle;
     const label = alert.deviceModel
       ? `${alert.deviceModel.brand} ${alert.deviceModel.name}`
       : DEVICE_TYPE_LABELS[alert.deviceType];
 
     return (
-      <motion.div
+      <div
         key={alert.id}
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
         className="px-4 py-3 flex items-center gap-3"
       >
         <div className={clsx(
@@ -1215,7 +1211,7 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
             </button>
           </div>
         )}
-      </motion.div>
+      </div>
     );
   };
 
@@ -1258,7 +1254,7 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
               Par type d'appareil
             </p>
             <div className="divide-y divide-[var(--border-glass)]">
-              {typeAlerts.map((alert, i) => renderAlertRow(alert, i))}
+              {typeAlerts.map((alert) => renderAlertRow(alert))}
             </div>
           </div>
         )}
@@ -1270,7 +1266,7 @@ function TabAlerts({ isManager }: { isManager: boolean }) {
               Par modèle
             </p>
             <div className="divide-y divide-[var(--border-glass)]">
-              {modelAlerts.map((alert, i) => renderAlertRow(alert, typeAlerts.length + i))}
+              {modelAlerts.map((alert) => renderAlertRow(alert))}
             </div>
           </div>
         )}
@@ -1446,14 +1442,11 @@ function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fro
               <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
                 Appareils réceptionnés ({devices.length})
               </p>
-              {devices.map((device, i) => {
+              {devices.map((device) => {
                 const isNavigable = !['ORDERED'].includes(device.status);
                 return (
-                  <motion.div
+                  <div
                     key={device.id}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.02 }}
                     onClick={() => isNavigable && handleDeviceClick(device)}
                     className={clsx(
                       'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150',
@@ -1502,7 +1495,7 @@ function PODetailDrawer({ order, fromTab, onClose }: { order: PurchaseOrder; fro
                         <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>
@@ -1591,15 +1584,12 @@ function TabHistory() {
           <p className="text-sm text-[var(--text-muted)]">Aucun résultat pour « {search} »</p>
         </GlassCard>
       ) : (
-        filtered.map((order, i) => {
+        filtered.map((order) => {
           const isClickable = order.receivedCount > 0;
           const hasSNMatch  = snMatchIds.has(order.id);
           return (
-            <motion.div
+            <div
               key={order.id}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.02 }}
               onClick={() => isClickable && setSelectedOrderId(order.id)}
               className={clsx(isClickable && 'cursor-pointer')}
             >
@@ -1641,7 +1631,7 @@ function TabHistory() {
                   </div>
                 </div>
               </GlassCard>
-            </motion.div>
+            </div>
           );
         })
       )}

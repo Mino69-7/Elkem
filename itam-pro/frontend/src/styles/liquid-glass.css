@@ -15,12 +15,49 @@ body {
   background: transparent;
 }
 
+/*
+  ⚠ Anti-seam GPU — approche en deux pseudo-éléments.
+
+  Le seam vertical provient de Chromium/Edge qui tile les backgrounds
+  avec plusieurs radial-gradient sur 256×256px. Quand un `.glass-card`
+  large (tableau, zone principale) fait du backdrop-filter, il échantillonne
+  à la jointure de deux tiles → liseré vertical visible qui scinde la page
+  en deux teintes.
+
+  Solution robuste :
+  - body::before → couleur plate uniquement (impossible de tiler
+    différemment une couleur unie — jamais de seam visible).
+  - body::after  → radial-gradients sur un layer GPU promu explicitement
+    (transform: translate3d + will-change). Rendu en une seule texture.
+  - Pas de `contain: strict` (peut en pratique fragmenter le paint en
+    sous-layers sur certaines versions de Chromium).
+*/
+
 body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: #dae1ff;
+}
+
+[data-theme="dark"] body::before {
+  background: #02020a;
+}
+
+body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
+
+  /* Promotion explicite en single composite layer — pas de tile split */
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 
   /* ── LIGHT MODE — orbes pastels sur base lavande ── */
   background:
@@ -29,11 +66,10 @@ body::before {
     radial-gradient(ellipse 68% 58% at 62% 88%,  rgba(245,158,  11, 0.20) 0%, transparent 52%),
     radial-gradient(ellipse 58% 52% at  8% 76%,  rgba(167,139, 250, 0.30) 0%, transparent 54%),
     radial-gradient(ellipse 52% 48% at 90% 70%,  rgba(236, 72, 153, 0.16) 0%, transparent 50%),
-    radial-gradient(ellipse 40% 40% at 50% 50%,  rgba(99, 102, 241, 0.08) 0%, transparent 70%),
-    #dae1ff;
+    radial-gradient(ellipse 40% 40% at 50% 50%,  rgba(99, 102, 241, 0.08) 0%, transparent 70%);
 }
 
-[data-theme="dark"] body::before {
+[data-theme="dark"] body::after {
   /* ── DARK MODE — espace profond violet / bleu marine ── */
   background:
     radial-gradient(ellipse 80% 72% at 18% 36%,  rgba(99,  66, 245, 0.70) 0%, transparent 58%),
@@ -41,8 +77,7 @@ body::before {
     radial-gradient(ellipse 74% 64% at 65% 86%,  rgba(79,  70, 229, 0.40) 0%, transparent 54%),
     radial-gradient(ellipse 62% 60% at 10% 82%,  rgba(139, 92, 246, 0.50) 0%, transparent 56%),
     radial-gradient(ellipse 56% 54% at 92% 68%,  rgba(30,  58, 138, 0.35) 0%, transparent 50%),
-    radial-gradient(ellipse 45% 45% at 48% 50%,  rgba(99,  66, 245, 0.14) 0%, transparent 70%),
-    #02020a;
+    radial-gradient(ellipse 45% 45% at 48% 50%,  rgba(99,  66, 245, 0.14) 0%, transparent 70%);
 }
 
 /* ─── Variables CSS Liquid Glass ──────────────────────────────
@@ -166,6 +201,13 @@ body::before {
   transition: background var(--transition-base), border-color var(--transition-base),
               box-shadow var(--transition-base), transform var(--transition-base);
   overflow: hidden;
+  /*
+    isolation: isolate crée un stacking context propre sans modifier
+    l'opacité → évite les seams GPU entre tiles du compositor sur les
+    larges éléments avec backdrop-filter (ex: tableau Catalogue modèles).
+    Différent de will-change:transform qui force un layer persistant coûteux.
+  */
+  isolation: isolate;
 }
 
 /* Reflet spéculaire interne (impression de surface courbe) */
@@ -771,31 +813,37 @@ body::before {
 }
 
 /* ─── Animations d'apparition (glass-reveal) ──────────────────── */
+/*
+  ⚠ NE PAS utiliser opacity dans ce keyframe.
+  Un élément avec backdrop-filter ET opacity < 1 (stacking context)
+  génère des artefacts blancs : le backdrop-filter blurre contre un
+  buffer compositor transparent au lieu du body::before coloré.
+  Solution : translateY + scale uniquement → pas de stacking context,
+  backdrop-filter toujours correct.
+*/
 @keyframes glassReveal {
   from {
-    opacity: 0;
     transform: translateY(10px) scale(0.97);
-    filter: blur(3px);
   }
   to {
-    opacity: 1;
     transform: translateY(0) scale(1);
-    filter: blur(0);
   }
 }
 
 .glass-reveal {
   animation: glassReveal var(--transition-slow) cubic-bezier(0.25, 1, 0.5, 1) both;
+  /* Stabilise le rendu GPU — évite les seams entre tiles compositor */
+  will-change: transform;
 }
 
 .glass-reveal:nth-child(1)  { animation-delay:   0ms; }
-.glass-reveal:nth-child(2)  { animation-delay:  55ms; }
-.glass-reveal:nth-child(3)  { animation-delay: 110ms; }
-.glass-reveal:nth-child(4)  { animation-delay: 165ms; }
-.glass-reveal:nth-child(5)  { animation-delay: 220ms; }
-.glass-reveal:nth-child(6)  { animation-delay: 275ms; }
-.glass-reveal:nth-child(7)  { animation-delay: 330ms; }
-.glass-reveal:nth-child(8)  { animation-delay: 385ms; }
+.glass-reveal:nth-child(2)  { animation-delay:  50ms; }
+.glass-reveal:nth-child(3)  { animation-delay: 100ms; }
+.glass-reveal:nth-child(4)  { animation-delay: 150ms; }
+.glass-reveal:nth-child(5)  { animation-delay: 200ms; }
+.glass-reveal:nth-child(6)  { animation-delay: 250ms; }
+.glass-reveal:nth-child(7)  { animation-delay: 300ms; }
+.glass-reveal:nth-child(8)  { animation-delay: 350ms; }
 
 /* Flottement doux */
 @keyframes floatGlass {

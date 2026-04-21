@@ -162,12 +162,9 @@ function TabInventaire() {
                   </tr>
                 </thead>
                 <tbody>
-                  {modelDevices.map((device, i) => (
-                    <motion.tr
+                  {modelDevices.map((device) => (
+                    <tr
                       key={device.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.02 }}
                       onClick={() => goToDevice(device.id)}
                       className="border-b border-[var(--border-glass)]/50 hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
@@ -186,7 +183,7 @@ function TabInventaire() {
                       <td className="px-4 py-3">
                         <span className="text-[10px] text-primary">Détail →</span>
                       </td>
-                    </motion.tr>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -208,8 +205,8 @@ function TabInventaire() {
           { label: 'En stock',  value: totalInStock, icon: Package,       color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
           { label: 'Commandés', value: totalOrdered, icon: ShoppingCart,  color: 'text-indigo-400',  bg: 'bg-indigo-400/10'  },
           { label: 'Ruptures',  value: alertCount,   icon: AlertTriangle, color: 'text-amber-400',   bg: 'bg-amber-400/10'   },
-        ].map((kpi, i) => (
-          <GlassCard key={kpi.label} padding="md" animate index={i}>
+        ].map((kpi) => (
+          <GlassCard key={kpi.label} padding="md">
             <div className="flex items-center gap-3">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${kpi.bg}`}>
                 <kpi.icon size={18} className={kpi.color} />
@@ -275,15 +272,12 @@ function TabInventaire() {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {models.map((model, i) => {
+                    {models.map((model) => {
                       const isEmpty = model.inStock === 0;
                       const hasNotif = unviewedInventaireModelIds.has(model.id);
                       return (
-                        <motion.div
+                        <div
                           key={model.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.04 }}
                           onClick={() => {
                             markInventaireModelViewed(model.id, model.inStock);
                             setSelectedModel(model);
@@ -337,11 +331,9 @@ function TabInventaire() {
                             </div>
 
                             <div className="h-1 rounded-full bg-white/5 overflow-hidden mb-2">
-                              <motion.div
+                              <div
                                 className={`h-full rounded-full ${isEmpty ? 'bg-amber-400' : 'bg-emerald-400'}`}
-                                initial={{ width: 0 }}
-                                animate={{ width: isEmpty ? '3%' : `${Math.min((model.inStock / 10) * 100, 100)}%` }}
-                                transition={{ delay: i * 0.04 + 0.2, duration: 0.5 }}
+                                style={{ width: isEmpty ? '3%' : `${Math.min((model.inStock / 10) * 100, 100)}%` }}
                               />
                             </div>
 
@@ -354,7 +346,7 @@ function TabInventaire() {
                               )}
                             </div>
                           </GlassCard>
-                        </motion.div>
+                        </div>
                       );
                     })}
                   </div>
@@ -391,15 +383,12 @@ function TabInventaire() {
                             </tr>
                           </thead>
                           <tbody>
-                            {models.map((model, i) => {
+                            {models.map((model) => {
                               const isEmpty = model.inStock === 0;
                               const hasNotif = unviewedInventaireModelIds.has(model.id);
                               return (
-                                <motion.tr
+                                <tr
                                   key={model.id}
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  transition={{ delay: i * 0.02 }}
                                   onClick={() => {
                                     markInventaireModelViewed(model.id, model.inStock);
                                     setSelectedModel(model);
@@ -449,7 +438,7 @@ function TabInventaire() {
                                       <span className="text-xs text-[var(--text-muted)]">—</span>
                                     )}
                                   </td>
-                                </motion.tr>
+                                </tr>
                               );
                             })}
                           </tbody>
@@ -485,12 +474,9 @@ function TabInventaire() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(stockDevices?.data ?? []).map((device, i) => (
-                    <motion.tr
+                  {(stockDevices?.data ?? []).map((device) => (
+                    <tr
                       key={device.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.02 }}
                       onClick={() => goToDevice(device.id)}
                       className="border-b border-[var(--border-glass)]/50 last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
@@ -512,7 +498,7 @@ function TabInventaire() {
                       <td className="px-4 py-3">
                         <span className="text-[10px] text-primary">Détail →</span>
                       </td>
-                    </motion.tr>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -664,7 +650,7 @@ function TabDechets() {
                 </tr>
               </thead>
               <tbody>
-                {devices.map((device, i) => {
+                {devices.map((device) => {
                   const retiredAt     = device.retiredAt ? new Date(device.retiredAt).getTime() : null;
                   const isRecent      = retiredAt !== null && (now - retiredAt) < SIX_MONTHS_MS && !!device.purchaseOrderId;
                   const isActiveModel = activeModelKeys.has(`${device.brand}|${device.model}`);
@@ -672,11 +658,8 @@ function TabDechets() {
                   const badge         = STATUS_BADGE[device.status];
                   const Icon          = TYPE_ICONS[device.type as DeviceType] ?? HelpCircle;
                   return (
-                    <motion.tr
+                    <tr
                       key={device.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.02 }}
                       onClick={() => {
                         if (hasNotif) markDechetsDeviceViewed(device.id);
                         navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'dechets' } });
@@ -734,7 +717,7 @@ function TabDechets() {
                           )}
                         </div>
                       </td>
-                    </motion.tr>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -853,17 +836,14 @@ function TabMaintenance() {
                 </tr>
               </thead>
               <tbody>
-                {devices.map((device, i) => {
+                {devices.map((device) => {
                   const Icon     = TYPE_ICONS[device.type as DeviceType] ?? HelpCircle;
                   const deadline = device.maintenanceDeadline ? new Date(device.maintenanceDeadline) : null;
                   const isOverdue = deadline !== null && deadline < new Date();
                   const hasNotif  = overdueUnviewedDeviceIds.has(device.id);
                   return (
-                    <motion.tr
+                    <tr
                       key={device.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.02 }}
                       onClick={() => {
                         if (hasNotif) markMaintenanceDeviceViewed(device.id);
                         navigate(`/devices/${device.id}`, { state: { from: '/stock', fromTab: 'maintenance' } });
@@ -908,7 +888,7 @@ function TabMaintenance() {
                           <span className="text-xs text-[var(--text-muted)]">—</span>
                         )}
                       </td>
-                    </motion.tr>
+                    </tr>
                   );
                 })}
               </tbody>

@@ -967,10 +967,8 @@ function TabEquipements({ userId, canEdit }: { userId: string; canEdit: boolean;
     const isFake        = d.serialNumber.startsWith('PERIPH-') || d.serialNumber.startsWith('MON-');
 
     return (
-      <motion.div
+      <div
         key={d.id}
-        initial={{ opacity: 0, y: -4 }}
-        animate={{ opacity: 1, y: 0 }}
         className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--border-glass)] bg-white/[0.018] group"
       >
         {/* Spacer icône */}
@@ -1027,7 +1025,7 @@ function TabEquipements({ userId, canEdit }: { userId: string; canEdit: boolean;
             </button>
           </div>
         )}
-      </motion.div>
+      </div>
     );
   };
 
@@ -1184,11 +1182,8 @@ function TabEquipements({ userId, canEdit }: { userId: string; canEdit: boolean;
                     Modèle
                   </span>
                   {Array.from({ length: monitorQty }, (_, i) => (
-                    <motion.div
+                    <div
                       key={i}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
                       className="flex items-center gap-2"
                     >
                       <span className="text-xs text-[var(--text-muted)] w-14 flex-shrink-0">
@@ -1229,7 +1224,7 @@ function TabEquipements({ userId, canEdit }: { userId: string; canEdit: boolean;
                           );
                         })}
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
 
@@ -1750,7 +1745,7 @@ export default function DeviceDetail() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
             {/* Matériel */}
-            <GlassCard padding="md" animate index={0}>
+            <GlassCard padding="md">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Matériel</h3>
               {device.purchaseOrder?.reference ? (
                 <div className="flex justify-between items-center gap-4 py-2 border-b border-[var(--border-glass)]">
@@ -1822,7 +1817,7 @@ export default function DeviceDetail() {
             </GlassCard>
 
             {/* Statut & Affectation */}
-            <GlassCard padding="md" animate index={1}>
+            <GlassCard padding="md">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">Statut</h3>
               <div className="mb-3"><StatusBadge status={device.status} /></div>
               <InfoRow label="Site" value={device.site} />
@@ -1873,12 +1868,9 @@ export default function DeviceDetail() {
               </div>
             ) : (
               <div className="divide-y divide-[var(--border-glass)]">
-                {device.maintenanceLogs.map((log, i) => (
-                  <motion.div
+                {device.maintenanceLogs.map((log) => (
+                  <div
                     key={log.id}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04 }}
                     className="flex gap-4 p-4"
                   >
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${log.resolved ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>
@@ -1896,7 +1888,7 @@ export default function DeviceDetail() {
                       </p>
                     </div>
                     {!log.resolved && <XCircle size={14} className="text-amber-400 flex-shrink-0 mt-1" />}
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             )}
@@ -1907,12 +1899,9 @@ export default function DeviceDetail() {
         <Tabs.Content value="audit" className="mt-4">
           <GlassCard padding="none">
             <div className="divide-y divide-[var(--border-glass)]">
-              {(device.auditLogs ?? []).map((log, i) => (
-                <motion.div
+              {(device.auditLogs ?? []).map((log) => (
+                <div
                   key={log.id}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.02 }}
                   className="flex gap-3 px-4 py-3"
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
@@ -1930,7 +1919,7 @@ export default function DeviceDetail() {
                     )}
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">{formatDateTime(log.createdAt)}</p>
                   </div>
-                </motion.div>
+                </div>
               ))}
 
               {/* Entrée de création — toujours visible en bas */}

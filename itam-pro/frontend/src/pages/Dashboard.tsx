@@ -3,7 +3,6 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Tooltip,
   ResponsiveContainer, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
-import { motion } from 'framer-motion';
 import {
   Monitor, Package, UserCheck, Wrench, ShieldAlert,
   TrendingUp, Activity, Clock,
@@ -49,17 +48,16 @@ const STATUS_CHART_COLORS: Record<string, string> = {
 // ─── KPI Card ─────────────────────────────────────────────────
 
 function KpiCard({
-  label, value, icon: Icon, color, loading, index,
+  label, value, icon: Icon, color, loading,
 }: {
   label: string;
   value: number | undefined;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   color: string;
   loading: boolean;
-  index: number;
 }) {
   return (
-    <GlassCard animate index={index} hoverable>
+    <GlassCard hoverable>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs text-[var(--text-muted)] font-medium uppercase tracking-wide">{label}</p>
@@ -125,17 +123,17 @@ export default function Dashboard() {
 
       {/* ─── KPI row ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Total appareils" value={data?.totals.devices}       icon={Monitor}    color="#6366f1" loading={isLoading} index={0} />
-        <KpiCard label="En stock"        value={data?.totals.inStock}        icon={Package}    color="#10b981" loading={isLoading} index={1} />
-        <KpiCard label="Assignés"        value={data?.totals.assigned}       icon={UserCheck}  color="#06b6d4" loading={isLoading} index={2} />
-        <KpiCard label="En maintenance"  value={data?.totals.inMaintenance}  icon={Wrench}     color="#f59e0b" loading={isLoading} index={3} />
+        <KpiCard label="Total appareils" value={data?.totals.devices}       icon={Monitor}    color="#6366f1" loading={isLoading} />
+        <KpiCard label="En stock"        value={data?.totals.inStock}        icon={Package}    color="#10b981" loading={isLoading} />
+        <KpiCard label="Assignés"        value={data?.totals.assigned}       icon={UserCheck}  color="#06b6d4" loading={isLoading} />
+        <KpiCard label="En maintenance"  value={data?.totals.inMaintenance}  icon={Wrench}     color="#f59e0b" loading={isLoading} />
       </div>
 
       {/* ─── Graphiques ────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* BarChart — par type */}
-        <GlassCard animate index={4} className="lg:col-span-2">
+        <GlassCard className="lg:col-span-2">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={16} className="text-primary" />
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Appareils par type</h2>
@@ -171,7 +169,7 @@ export default function Dashboard() {
         </GlassCard>
 
         {/* DonutChart — par statut */}
-        <GlassCard animate index={5}>
+        <GlassCard>
           <div className="flex items-center gap-2 mb-4">
             <Activity size={16} className="text-primary" />
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Statuts</h2>
@@ -219,7 +217,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Activité récente */}
-        <GlassCard animate index={6} padding="none">
+        <GlassCard padding="none">
           <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-[var(--border-glass)]">
             <div className="flex items-center gap-2">
               <Clock size={16} className="text-primary" />
@@ -240,10 +238,8 @@ export default function Dashboard() {
               : data?.recentActivity.length === 0
                 ? <p className="px-4 py-6 text-sm text-[var(--text-muted)] text-center">Aucune activité</p>
                 : data?.recentActivity.map((log) => (
-                      <motion.div
+                      <div
                         key={log.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
                         className="px-4 py-3 flex items-start gap-3 hover:bg-white/[0.02] transition-colors"
                       >
                         <div className="w-7 h-7 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -268,7 +264,7 @@ export default function Dashboard() {
                           )}
                           <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{formatDateTime(log.createdAt)}</p>
                         </div>
-                      </motion.div>
+                      </div>
                 ))
             }
           </div>
@@ -278,7 +274,7 @@ export default function Dashboard() {
         <div className="space-y-4">
 
           {/* Garanties */}
-          <GlassCard animate index={7} padding="none">
+          <GlassCard padding="none">
             <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-[var(--border-glass)]">
               <ShieldAlert size={16} className="text-amber-400" />
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">Garanties expirant bientôt</h2>
@@ -319,7 +315,7 @@ export default function Dashboard() {
           </GlassCard>
 
           {/* Derniers ajouts */}
-          <GlassCard animate index={8} padding="none">
+          <GlassCard padding="none">
             <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-[var(--border-glass)]">
               <div className="flex items-center gap-2">
                 <Package size={16} className="text-primary" />

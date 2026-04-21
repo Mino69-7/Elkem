@@ -6,6 +6,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#6366f1" />
     <title>ITAM Pro — IT Asset Management</title>
+
+    <!-- ▸ Anti-FOUC : applique le thème AVANT que React monte.
+         Sans ce script, body flash en #dae1ff (light) même si l'user
+         a sélectionné le mode nuit → repaint violent à la connexion.  -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('itam-ui-store');
+          var theme = 'dark';
+          if (raw) {
+            var data = JSON.parse(raw);
+            if (data && data.state && data.state.theme) theme = data.state.theme;
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+
+    <!-- Fond critique synchrone — évite le blanc avant que le CSS charge -->
+    <style>
+      html { background: #dae1ff; }
+      html[data-theme="dark"] { background: #02020a; }
+      body { margin: 0; }
+    </style>
   </head>
   <body>
     <!-- Liquid Glass SVG filter — réfraction liquide sur hover -->

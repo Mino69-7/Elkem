@@ -22,7 +22,9 @@
       "Bash(grep -v \"node_modules\\\\|//.*import\\\\|import.*from\")",
       "Bash(grep -n \"^function TabEquipements\\\\|^}$\" \"C:\\\\Users\\\\C9NLFF4\\\\Documents\\\\Elkem\\\\itam-pro\\\\frontend\\\\src\\\\pages\\\\DeviceDetail.tsx\")",
       "Bash(python3:*)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(pnpm exec *)",
+      "Bash(git stash *)"
     ]
   },
   "enabledPlugins": {

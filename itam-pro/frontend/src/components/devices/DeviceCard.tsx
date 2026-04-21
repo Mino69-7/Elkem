@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import {
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, Pencil, Trash2, UserRound,
@@ -27,21 +26,15 @@ const TYPE_ICONS: Record<DeviceType, React.ComponentType<{ size?: number; classN
 
 interface DeviceCardProps {
   device: Device;
-  index:  number;
   onEdit:   (device: Device) => void;
   onDelete: (device: Device) => void;
 }
 
-export default function DeviceCard({ device, index, onEdit, onDelete }: DeviceCardProps) {
+export default function DeviceCard({ device, onEdit, onDelete }: DeviceCardProps) {
   const Icon = TYPE_ICONS[device.type] ?? HelpCircle;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04 }}
-      className="glass-card p-4 group relative flex flex-col gap-3"
-    >
+    <div className="glass-card p-4 group relative flex flex-col gap-3">
       {/* Actions au survol */}
       <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
         <button
@@ -99,6 +92,6 @@ export default function DeviceCard({ device, index, onEdit, onDelete }: DeviceCa
           </>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }

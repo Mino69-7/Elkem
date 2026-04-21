@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import {
   Laptop, Monitor, Smartphone, Tablet, Printer, Keyboard,
   Mouse, Headphones, Layers, HelpCircle, ChevronUp, ChevronDown,
@@ -123,14 +122,11 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete, from
           </tr>
         </thead>
         <tbody>
-          {devices.map((device, i) => {
+          {devices.map((device) => {
             const Icon = TYPE_ICONS[device.type] ?? HelpCircle;
             return (
-              <motion.tr
+              <tr
                 key={device.id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.02 }}
                 onClick={() => navigate(`/devices/${device.id}`, { state: { from: '/devices', fromTab } })}
                 className="transition-colors group cursor-pointer"
               >
@@ -228,7 +224,7 @@ export default function DeviceTable({ devices, isLoading, onEdit, onDelete, from
                     </button>
                   </div>
                 </td>
-              </motion.tr>
+              </tr>
             );
           })}
         </tbody>

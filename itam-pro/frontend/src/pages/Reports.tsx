@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { FileDown, Laptop, ClipboardList, Filter, Loader2 } from 'lucide-react';
 import { GlassCard } from '../components/ui/GlassCard';
 import { AppSelect } from '../components/ui/AppSelect';
@@ -32,7 +31,6 @@ function ExportCard({
   description,
   onExport,
   loading,
-  index,
   children,
 }: {
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -40,11 +38,10 @@ function ExportCard({
   description: string;
   onExport: () => void;
   loading: boolean;
-  index: number;
   children?: React.ReactNode;
 }) {
   return (
-    <GlassCard animate index={index}>
+    <GlassCard>
       <div className="flex items-start gap-3 mb-4">
         <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0">
           <Icon size={20} className="text-primary" />
@@ -132,13 +129,9 @@ export default function Reports() {
       </div>
 
       {error && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400"
-        >
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
           {error}
-        </motion.div>
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -150,7 +143,6 @@ export default function Reports() {
           description="Liste complète du parc avec toutes les informations (matériel, statut, assignation, financier, Intune)"
           onExport={handleExportDevices}
           loading={loadingDevices}
-          index={0}
         >
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
             <Filter size={12} />
@@ -194,7 +186,6 @@ export default function Reports() {
           description="Historique de toutes les actions effectuées sur les appareils (création, modification, assignation, sync Intune…)"
           onExport={handleExportAudit}
           loading={loadingAudit}
-          index={1}
         >
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
             <Filter size={12} />
@@ -224,7 +215,7 @@ export default function Reports() {
       </div>
 
       {/* ─── Info format ──────────────────────────────────────── */}
-      <GlassCard animate index={2} className="text-xs text-[var(--text-muted)] space-y-1">
+      <GlassCard className="text-xs text-[var(--text-muted)] space-y-1">
         <p className="font-medium text-[var(--text-secondary)]">À propos du format CSV</p>
         <p>Les fichiers sont encodés en <span className="font-mono text-[var(--text-primary)]">UTF-8 avec BOM</span> pour une compatibilité optimale avec Microsoft Excel.</p>
         <p>Ouvrir dans Excel : double-cliquer sur le fichier .csv — les accents français s'affichent correctement.</p>
