@@ -108,12 +108,22 @@ function TabInventaire() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <button
+          <motion.button
             onClick={() => setSelectedModel(null)}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors duration-200"
+            style={{
+              background: 'var(--bg-glass)',
+              backdropFilter: 'var(--blur)',
+              WebkitBackdropFilter: 'var(--blur)',
+              border: '1px solid var(--border-glass)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), 0 2px 8px rgba(0,0,0,0.10)',
+            }}
+            aria-label="Retour"
           >
             <ArrowLeft size={16} />
-          </button>
+          </motion.button>
           <div>
             <p className="font-semibold text-[var(--text-primary)]">{selectedModel.brand} {selectedModel.name}</p>
             <p className="text-xs text-[var(--text-muted)]">

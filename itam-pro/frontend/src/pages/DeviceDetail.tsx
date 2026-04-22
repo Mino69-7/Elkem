@@ -1727,8 +1727,6 @@ export default function DeviceDetail() {
                   className="absolute inset-0 rounded-[18px]"
                   style={{
                     background: 'rgba(99,102,241,0.13)',
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
                     border: '1px solid rgba(99,102,241,0.22)',
                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 2px 8px rgba(99,102,241,0.12)',
                   }}

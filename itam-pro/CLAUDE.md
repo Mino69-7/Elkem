@@ -700,7 +700,8 @@ Toutes les queries Stock ont `staleTime: 0` + `refetchOnMount: true` pour fraîc
 - **DeviceForm SN non-workstation en édition** : `readOnly={isEdit}` (SMARTPHONE, TABLET, MONITOR, etc.).
 - **SPA navigation flash** : React.lazy() throw toujours une Promise au 1er rendu même si chunk en cache → fix = `future={{ v7_startTransition: true }}` sur `BrowserRouter` + `fallback={null}` sur Suspense AppShell. Ne jamais retirer ces deux éléments.
 - **routePreload.ts** (`frontend/src/utils/`) : charge tous les 9 chunks en parallèle pendant le splash. Mémoïsé. Appelé dans `ProtectedRoute` de `App.tsx`.
-- **dataPreload.ts** (`frontend/src/utils/`) : pré-chauffe le cache TanStack Query pendant le splash (`stats`, `stock-summary`, `stockalerts`, `maintenance-devices`, `retired-devices`, `device-models`). Nécessite `setSharedQueryClient(queryClient)` dans `main.tsx` avant usage. Fail-open.
+- **dataPreload.ts** (`frontend/src/utils/`) : pré-chauffe le cache TanStack Query pendant le splash (11 queries en parallèle — voir Phase 27). Nécessite `setSharedQueryClient(queryClient)` dans `main.tsx` avant usage. Fail-open. **Règle** : toute nouvelle page avec un `isLoading` au 1er rendu DOIT avoir sa query listée ici avec la clé exacte utilisée par le hook.
+- **Pill animée (layoutId) — règle GPU** : ne jamais ajouter `backdropFilter` / `WebkitBackdropFilter` à un `motion.div` pill à l'intérieur d'un conteneur qui a déjà `backdrop-filter` (`.tabs-glass`, `.toggle-glass`, `.navbar-glass`, `.sidebar-glass`, `.glass-card`). Cela crée deux layers GPU compositor dont les frontières génèrent une barre verticale (seam GPU) visible au hover. Le blur du conteneur suffit.
 - **Animations par-item interdites** : ne jamais mettre `motion.tr`/`motion.div` avec `initial: opacity 0` sur des éléments dans un `.map()` — stagger déclenché à chaque montage = flash visible. Utiliser des `<tr>`/`<div>` plain à la place.
 
 ---
@@ -1448,7 +1449,7 @@ Disponible depuis react-router-dom v6.8+ (projet en v6.26). Enveloppe toutes les
 **Préchauffage du cache TanStack Query pendant le splash** (`src/utils/dataPreload.ts` — nouveau fichier) :
 - Exporte `setSharedQueryClient(client)` — appelé dans `main.tsx` après création du QueryClient
 - Exporte `prefetchCriticalData()` — appelé dans `ProtectedRoute` en parallèle de `preloadCriticalRoutes()`
-- Pré-charge : `['stats']`, `['stock-summary']`, `['stockalerts']`, `['maintenance-devices']`, `['retired-devices']`, `['device-models']`
+- Pré-charge 6 queries initiales (Phase 26) — étendu à 11 en Phase 27 (voir ci-dessous)
 - Fail-open : toute erreur réseau swallowée — le splash ne bloque jamais sur une requête API
 
 #### Règles à ne jamais enfreindre
@@ -1472,9 +1473,79 @@ Disponible depuis react-router-dom v6.8+ (projet en v6.26). Enveloppe toutes les
 | `frontend/src/pages/Orders.tsx` | `motion.div` stagger drawer supprimé |
 | `frontend/src/pages/DeviceDetail.tsx` | `motion.div` stagger moniteur supprimé |
 
-#### CSS — bug ligne verticale (seam GPU) — résolu en amont
+#### CSS — body background GPU layer
 
 `body::before` → couleur plate uniquement (sans gradient). `body::after` → gradients sur layer GPU promu (`transform: translate3d(0,0,0)` + `will-change: transform`). Pas de `contain: strict` (fragmente le paint). Défini dans `frontend/src/styles/liquid-glass.css`.
+
+---
+
+### ✅ Phase 27 — Preload complet 11 queries + bouton retour glass + seam GPU pills (2026-04-22)
+
+#### 1. dataPreload.ts — extension à 11 queries (zéro flash sur toutes les pages)
+
+**Problème** : après la Phase 26, Stock et Rapports étaient flash-free mais Appareils, Commandes, Admin et Dashboard affichaient encore un Skeleton / micro-flash sur la 1re navigation. Cause : leurs queries n'étaient pas dans `dataPreload.ts`.
+
+**Fix** : 5 queries ajoutées — total 11 prefetchées en parallèle pendant le splash :
+
+| Query key | Page |
+|---|---|
+| `['stats']` | Dashboard |
+| `['stock-summary']` | Stock › Inventaire + notifications |
+| `['stockalerts']` | Stock › Règles alerte + notifications |
+| `['maintenance-devices']` | Stock › Maintenance + notifications |
+| `['retired-devices']` | Stock › Déchets + notifications |
+| `['device-models']` | Dropdowns (actifs uniquement) |
+| `['device-models-all']` | Commandes › Catalogue |
+| `['devices', { page:1, limit:25, sortBy:'updatedAt', sortOrder:'desc', excludeStock:true, type:'LAPTOP', assigned:true }]` | Appareils (onglet LAPTOP par défaut) |
+| `['orders']` | Commandes › onglet Commandes actives |
+| `['orders-history']` | Commandes › Historique |
+| `['users', '', '']` | Admin (recherche vide, tous rôles) |
+
+**Règle critique query Appareils** : la clé `['devices', merged]` est construite par `useDevices()` en fusionnant `deviceStore.filters` (defaultFilters) avec `extraFilters`. Au 1er render : `{ page:1, limit:25, sortBy:'updatedAt', sortOrder:'desc', excludeStock:true, type:'LAPTOP', assigned:true }`. Le préfetch doit utiliser cet objet exact. TanStack Query v5 compare par sérialisation JSON stable (ordre alphabétique des clés) → l'ordre des propriétés ne compte pas.
+
+**Comportement avec `staleTime: 0`** (orders-history, device-models-all) : même stale, si la donnée est en cache `isLoading = false` → rendu immédiat, background refetch silencieux. Pas de Skeleton.
+
+**Règle** : toute nouvelle page qui affiche un Skeleton au 1er rendu DOIT avoir sa query dans `dataPreload.ts` avec la clé **identique** à celle du hook. Utiliser TanStack Query DevTools pour vérifier la clé exacte.
+
+**Constante dans dataPreload.ts** :
+```typescript
+const DEVICES_LAPTOP_KEY = {
+  page: 1, limit: 25, sortBy: 'updatedAt', sortOrder: 'desc',
+  excludeStock: true, type: 'LAPTOP', assigned: true,
+};
+```
+Doit rester synchronisée avec `deviceStore.ts` defaultFilters + Devices.tsx extraFilters.
+
+---
+
+#### 2. Bouton retour glass — Stock.tsx
+
+Le bouton `ArrowLeft` au-dessus des tables de Stock.tsx était invisible (pas de bordure). Style glass appliqué identique au bouton retour de DeviceDetail (Phase 23) :
+- `<button>` → `<motion.button>` avec `whileHover={{ scale: 1.05 }}` + `whileTap={{ scale: 0.95 }}`
+- `background: 'var(--bg-glass)'`, `backdropFilter: 'var(--blur)'`, `border: '1px solid var(--border-glass)'`
+- `boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), 0 2px 8px rgba(0,0,0,0.10)'`
+- Specular 0.20 (pas 0.12) pour les boutons icône compacts ≤32px
+
+---
+
+#### 3. Seam GPU — backdropFilter sur pills imbriqués
+
+**Symptôme** : une barre verticale subtile apparaissait sur toute la hauteur de la page au hover sur les onglets/toggles de Appareils, Commandes, DeviceDetail, Settings. La page Stock n'était pas affectée (sa toggle-bar est plus étroite et ne franchit pas les frontières de tiles GPU ~512px).
+
+**Cause racine** : Chromium crée un layer GPU compositor distinct pour chaque élément avec `backdrop-filter`. Les `motion.div` pills animées (layoutId) avaient `backdropFilter: 'blur(12px)'` ET étaient à l'intérieur d'un conteneur qui avait lui-même `backdrop-filter` (`.tabs-glass`, `.toggle-glass`, `.navbar-glass`, `.sidebar-glass`, `glass-card`). Deux layers GPU imbriqués → leurs frontières horizontales s'alignent sur les seams de tiles Chromium → barre visible.
+
+**Fix** : suppression de `backdropFilter` / `WebkitBackdropFilter` sur tous les `motion.div` pills imbriqués. Le blur du conteneur suffit.
+
+| Fichier | layoutId |
+|---|---|
+| `Devices.tsx` | `assign-labtype-pill`, `view-mode-pill`, `type-tab-bg` |
+| `Orders.tsx` | `orders-tabs-pill` |
+| `MobileNav.tsx` | `mobile-nav-pill` |
+| `Sidebar.tsx` | `nav-pill` / `nav-pill-mobile` (via `ActivePill`) |
+| `DeviceDetail.tsx` | `detail-tabs-pill` |
+| `Settings.tsx` | `settings-theme-pill` |
+
+**Règle définitive** : **ne jamais ajouter `backdropFilter` à un `motion.div` pill** (`layoutId`, `absolute inset-0`) quand il est enfant d'un conteneur avec `backdrop-filter`. Conserver uniquement `background`, `border`, `boxShadow`.
 
 ---
 
